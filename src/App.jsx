@@ -95,44 +95,21 @@ async function fetchChannel(id) {
   const c = getCache("ch:" + id);
   if (c) return c;
   try {
-    const d = await fetchJ(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,contentDetails&id=${id}&key=${API_KEY}`);
+    const d = await fetchJ(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${id}&key=${API_KEY}`);
     if (!d.items || !d.items.length) return null;
     const ch = d.items[0], st = ch.statistics, sn = ch.snippet;
 
-    const uploadsId = ch.contentDetails?.relatedPlaylists?.uploads;
     const createdAt = new Date(sn.publishedAt);
     const subs = safeNum(st.subscriberCount);
     const totalViews = safeNum(st.viewCount);
+    const videoCount = safeNum(st.videoCount);
     const title = sn.title || "Unknown";
     const thumb = sn.thumbnails?.default?.url || "";
-
-    let oldest = null, upCount = 0, recentViews = [];
-    if (uploadsId) {
-      try {
-        const pl = await fetchJ(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsId}&maxResults=50&key=${API_KEY}`);
-        const items = pl.items || [];
-        upCount = items.length;
-        if (items.length) {
-          oldest = new Date(items[items.length - 1].snippet.publishedAt);
-          const ids = items.slice(0, 10).map(i => i.snippet?.resourceId?.videoId).filter(Boolean).join(",");
-          if (ids) {
-            try {
-              const vd = await fetchJ(`https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${ids}&key=${API_KEY}`);
-              (vd.items || []).forEach(v => recentViews.push(safeNum(v.statistics?.viewCount)));
-            } catch {}
-          }
-        }
-      } catch {}
-    }
-
-    const ageGap = oldest ? monthsDiff(oldest, createdAt) : 0;
-    const trueAge = oldest ? monthsDiff(oldest, new Date()) : monthsDiff(createdAt, new Date());
+    const trueAge = Math.max(1, monthsDiff(createdAt, new Date()));
     const viralRatio = subs > 0 ? +(totalViews / subs).toFixed(2) : 0;
-    const isPivot = ageGap > 6;
-    const avgRecent = recentViews.length ? Math.round(recentViews.reduce((a, b) => a + b, 0) / recentViews.length) : 0;
-    const estFreq = upCount > 0 && oldest ? +(upCount / Math.max(1, trueAge)).toFixed(1) : 0.5;
+    const estFreq = videoCount > 0 && trueAge > 0 ? +(videoCount / trueAge).toFixed(1) : 0.5;
 
-    const r = { id, title, thumb, subs, totalViews, createdAt, oldestVideo: oldest, ageGapMonths: ageGap, trueAgeMonths: Math.max(1, trueAge), viralRatio, isPivot, avgRecent, estFreq, upCount };
+    const r = { id, title, thumb, subs, totalViews, createdAt, oldestVideo: null, ageGapMonths: 0, trueAgeMonths: trueAge, viralRatio, isPivot: false, avgRecent: 0, estFreq, upCount: videoCount };
     setCache("ch:" + id, r);
     return r;
   } catch { return null; }
