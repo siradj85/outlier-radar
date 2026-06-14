@@ -1,15 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
-const LS_KEY = "outlier-radar-api-key";
+const API_KEY = "AIzaSyASyKvq39AwGH6Nsa7wEpjRAW8z8JIJTDc";
 const SEARCH_COUNT = 20;
-
-function saveApiKey(key) {
-  localStorage.setItem(LS_KEY, key);
-}
-
-function loadApiKey() {
-  return localStorage.getItem(LS_KEY) || "";
-}
 
 async function fetchJson(url) {
   const res = await fetch(url);
@@ -38,19 +30,13 @@ function timeAgo(dateStr) {
 }
 
 export default function App() {
-  const [apiKey, setApiKey] = useState(loadApiKey);
   const [keyword, setKeyword] = useState("");
   const [minRatio, setMinRatio] = useState(5);
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    saveApiKey(apiKey);
-  }, [apiKey]);
-
   async function search() {
-    if (!apiKey) return setError("الرجاء إدخال مفتاح API");
     if (!keyword.trim()) return setError("الرجاء إدخال كلمة مفتاحية");
     setError("");
     setLoading(true);
@@ -58,7 +44,7 @@ export default function App() {
 
     try {
       const searchUrl =
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(keyword)}&type=video&order=date&publishedAfter=${daysAgo(90)}&maxResults=${SEARCH_COUNT}&key=${apiKey}`;
+        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(keyword)}&type=video&order=date&publishedAfter=${daysAgo(90)}&maxResults=${SEARCH_COUNT}&key=${API_KEY}`;
 
       const searchData = await fetchJson(searchUrl);
       if (!searchData.items?.length) {
@@ -72,10 +58,10 @@ export default function App() {
 
       const [statsData, channelsData] = await Promise.all([
         fetchJson(
-          `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${videoIds}&key=${apiKey}`
+          `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${videoIds}&key=${API_KEY}`
         ),
         fetchJson(
-          `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${channelIds}&key=${apiKey}`
+          `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${channelIds}&key=${API_KEY}`
         ),
       ]);
 
@@ -136,18 +122,8 @@ export default function App() {
         </header>
 
         <section className="bg-[#111827] rounded-2xl p-4 md:p-6 mb-6 shadow-lg border border-gray-800">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <div className="md:col-span-2">
-              <label className="block text-xs text-gray-400 mb-1">مفتاح YouTube Data API</label>
-              <input
-                type="text"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="AIzaSy..."
-                className="w-full bg-[#1e293b] border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition"
-              />
-            </div>
-            <div>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <div className="md:col-span-3">
               <label className="block text-xs text-gray-400 mb-1">الكلمة المفتاحية</label>
               <input
                 type="text"
