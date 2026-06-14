@@ -216,24 +216,30 @@ export default function App() {
       for (let i = 0; i < 5; i++) { await new Promise(r => setTimeout(r, 4000)); setStage(i + 1); }
     })();
 
-    const parsed = valid.map(parseUrl);
-    const ids = (await Promise.all(parsed.map(resolveId))).filter(Boolean);
-    if (ids.length === 0) { setError(t("error_urls")); setLoading(false); return; }
+    try {
+      const parsed = valid.map(parseUrl);
+      const results = await Promise.allSettled(parsed.map(resolveId));
+      const ids = results.filter(r => r.status === "fulfilled" && r.value).map(r => r.value);
+      if (ids.length === 0) { setError(t("error_urls")); setLoading(false); return; }
 
-    const data = (await Promise.all(ids.map(fetchChannel))).filter(Boolean);
-    if (data.length === 0) { setError(t("error_urls")); setLoading(false); return; }
+      const chanResults = await Promise.allSettled(ids.map(fetchChannel));
+      const data = chanResults.filter(r => r.status === "fulfilled" && r.value).map(r => r.value);
+      if (data.length === 0) { setError(t("error_urls")); setLoading(false); return; }
 
-    if (data.length < valid.length) {
-      const diff = valid.length - data.length;
-      setError(t("error_partial").replace("{n}", diff));
+      if (data.length < valid.length) {
+        const diff = valid.length - data.length;
+        setError(t("error_partial").replace("{n}", diff));
+      }
+
+      const cat = detectCat(niche, data.map(d => d.title));
+      const verdict = calcVerdict(data, cat);
+
+      await loadP;
+      setChanData(data);
+      setResult(verdict);
+    } catch (err) {
+      setError(err?.message || t("error_urls"));
     }
-
-    const cat = detectCat(niche, data.map(d => d.title));
-    const verdict = calcVerdict(data, cat);
-
-    await loadP;
-    setChanData(data);
-    setResult(verdict);
     setLoading(false);
   }
 
@@ -242,7 +248,7 @@ export default function App() {
     if (!r) return;
     const labelText = lang === "ar" ? r.labelAr : r.label;
 
-    const render = () => `<!DOCTYPE html><html lang="${lang}" dir="${dir}"><head><meta charset="UTF-8"><title>Niche Radar Report</title>
+    const html = `<html lang="${lang}" dir="${dir}"><head><meta charset="UTF-8"><title>Niche Radar Report</title>
     <style>
       body{font-family:Arial,sans-serif;padding:30px;color:#222;direction:${dir};max-width:700px;margin:auto}
       h1{color:#1a73e8;font-size:24px;margin:0 0 4px}
@@ -255,10 +261,11 @@ export default function App() {
       td{padding:6px 10px;border-bottom:1px solid #eee}
       td:first-child{font-weight:600;color:#555}
       h2{font-size:16px;margin:16px 0 8px;color:#333}
-      .ch{background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:10px;margin-bottom:8px;font-size:12px}
+      .ch{background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:10px 14px;margin-bottom:8px;font-size:13px}
       .ch strong{color:#111}
       .ch .tag{color:#7c3aed;font-weight:bold}
       .footer{text-align:center;color:#999;font-size:10px;margin-top:24px;border-top:1px solid #eee;padding-top:12px}
+      @media print{body{padding:15px}table{font-size:12px}.ch{break-inside:avoid}}
     </style></head><body>
     <h1>Niche Radar Report</h1>
     <p class="sub">${niche} &mdash; ${r.channelCount} ${lang === "ar" ? "قناة محللة" : "channels analyzed"}</p>
@@ -274,18 +281,15 @@ export default function App() {
     ${chanData.map(ch => `<div class="ch"><strong>${ch.title}</strong> &mdash; ${fmt(ch.subs)} ${lang === "ar" ? "مشترك" : "subs"}, ${fmt(ch.totalViews)} ${lang === "ar" ? "مشاهدة" : "views"}, Ratio: ${ch.viralRatio}x, Age: ${ch.trueAgeMonths}mo${ch.isPivot ? ' <span class="tag">🔄 Pivot Detected</span>' : ""}</div>`).join("")}
     <p class="footer">Niche Radar &copy; 2026</p></body></html>`;
 
-    try {
-      const blob = new Blob([render()], { type: "text/html" });
-      const url = URL.createObjectURL(blob);
-      const w = window.open(url, "_blank");
-      if (w) {
-        w.onload = () => { setTimeout(() => { w.print(); URL.revokeObjectURL(url); }, 300); };
-      } else {
-        window.print();
-      }
-    } catch {
-      window.print();
-    }
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow.document;
+    doc.open(); doc.write(html); doc.close();
+    setTimeout(() => {
+      try { iframe.contentWindow.print(); } catch { window.print(); }
+      setTimeout(() => { document.body.removeChild(iframe); }, 1000);
+    }, 600);
   }
 
   /* ─── Loading ─── */
