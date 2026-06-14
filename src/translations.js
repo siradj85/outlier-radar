@@ -13,6 +13,8 @@ const en = {
   error_quota: "YouTube API quota exceeded. Wait until tomorrow or use a different API key.",
   error_niche: "Please enter a niche keyword.",
   error_urls: "Add at least one competitor channel URL.",
+  error_partial: "{n} channel(s) could not be analyzed — skipping them.",
+  error_api_key: "API key not configured. Create a .env file with VITE_YOUTUBE_API_KEY=your_key",
   error_no_results: "No channels found. Check the URLs.",
   results_found: "channels analyzed",
   // Loading stages
@@ -118,6 +120,8 @@ const ar = {
   error_quota: "تم تجاوز حصة API اليومية. انتظر للغد.",
   error_niche: "الرجاء إدخال اسم النتش.",
   error_urls: "أضف على الأقل رابط قناة منافسة واحدة.",
+  error_partial: "تعذر تحليل {n} قناة — تم تخطيها.",
+  error_api_key: "مفتاح API غير موجود. أنشئ ملف .env وأضف VITE_YOUTUBE_API_KEY=المفتاح",
   error_no_results: "لم يتم العثور على قنوات. تأكد من الروابط.",
   results_found: "قناة محللة",
   stage0: "جمع بيانات يوتيوب والعلامات المخفية",
