@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: niche-radar-api
+    runtime: node
+    region: oregon
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: MASTER_YOUTUBE_API_KEY
+        sync: false
+      - key: ENCRYPTION_SECRET
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        value: https://siradj85.github.io

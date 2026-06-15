@@ -1,13 +1,20 @@
+import { config } from "dotenv";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
+const __dirname = dirname(fileURLToPath(import.meta.url));
+config({ path: resolve(__dirname, "..", ".env") });
 import express from "express";
 import cors from "cors";
 import { pool, initDb } from "./db.js";
 import { encrypt, decrypt } from "./encrypt.js";
+import { hashPassword, comparePassword, signToken, requireAuth } from "./auth.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 const YT = "https://www.googleapis.com/youtube/v3";
 const MASTER_KEY = process.env.MASTER_YOUTUBE_API_KEY || "";
-app.use(cors({ origin: true }));
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "https://siradj85.github.io";
+app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json());
 
 /* ─── Helpers ─── */
@@ -18,55 +25,99 @@ async function fetchJson(url) {
   return d;
 }
 
-async function getUserApiKey(deviceToken) {
+async function getUserApiKey(userId) {
   const { rows } = await pool.query(
-    "SELECT encrypted_key, iv, auth_tag FROM user_api_keys WHERE device_token = $1",
-    [deviceToken]
+    "SELECT encrypted_key, iv, auth_tag FROM user_api_keys WHERE user_id = $1",
+    [userId]
   );
   if (rows.length === 0) return null;
   const row = rows[0];
   return decrypt(row.encrypted_key, row.iv, row.auth_tag);
 }
 
-/* GET /api/key — return whether user has a key stored */
-app.get("/api/key", async (req, res) => {
-  const token = req.headers["x-device-token"];
-  if (!token) return res.json({ hasKey: false });
-  const key = await getUserApiKey(token);
+/* ─── Auth ─── */
+
+/* POST /api/auth/register */
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: "Missing email or password" });
+    if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
+
+    const existing = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
+    if (existing.rows.length > 0) return res.status(409).json({ error: "Email already registered" });
+
+    const password_hash = await hashPassword(password);
+    const { rows } = await pool.query(
+      "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at",
+      [email, password_hash]
+    );
+    const user = rows[0];
+    const token = signToken(user);
+    res.status(201).json({ token, user: { id: user.id, email: user.email, created_at: user.created_at } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* POST /api/auth/login */
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: "Missing email or password" });
+
+    const { rows } = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    if (rows.length === 0) return res.status(401).json({ error: "Invalid email or password" });
+
+    const user = rows[0];
+    const valid = await comparePassword(password, user.password_hash);
+    if (!valid) return res.status(401).json({ error: "Invalid email or password" });
+
+    const token = signToken(user);
+    res.json({ token, user: { id: user.id, email: user.email, created_at: user.created_at } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* GET /api/auth/me */
+app.get("/api/auth/me", requireAuth, (req, res) => {
+  res.json({ user: { id: req.user.userId, email: req.user.email } });
+});
+
+/* ─── BYOK (Authenticated) ─── */
+
+/* GET /api/key — whether current user has a stored API key */
+app.get("/api/key", requireAuth, async (req, res) => {
+  const key = await getUserApiKey(req.user.userId);
   res.json({ hasKey: !!key });
 });
 
-/* POST /api/key — store user's API key (encrypted) */
-app.post("/api/key", async (req, res) => {
+/* POST /api/key — store/update user's own API key */
+app.post("/api/key", requireAuth, async (req, res) => {
   try {
-    const { deviceToken, apiKey } = req.body;
-    if (!deviceToken || !apiKey) return res.status(400).json({ error: "Missing fields" });
+    const { apiKey } = req.body;
+    if (!apiKey) return res.status(400).json({ error: "Missing apiKey" });
     const { encrypted, iv, tag } = encrypt(apiKey);
     await pool.query(
-      `INSERT INTO user_api_keys (device_token, encrypted_key, iv, auth_tag)
+      `INSERT INTO user_api_keys (user_id, encrypted_key, iv, auth_tag)
        VALUES ($1, $2, $3, $4)
-       ON CONFLICT (device_token) DO UPDATE SET encrypted_key = $2, iv = $3, auth_tag = $4, last_used_at = NOW()`,
-      [deviceToken, encrypted, iv, tag]
+       ON CONFLICT (user_id)
+       DO UPDATE SET encrypted_key = $2, iv = $3, auth_tag = $4, last_used_at = NOW()`,
+      [req.user.userId, encrypted, iv, tag]
     );
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/* ─── Proxy routes ─── */
+/* ─── Proxy routes (Authenticated) ─── */
+
 function getApiKey(req) {
   const userKey = req.headers["x-api-key"];
   if (userKey) return userKey;
-  const token = req.headers["x-device-token"] || req.query.deviceToken;
-  if (token) return null;
-  return MASTER_KEY || null;
+  return null;
 }
 
 async function resolveKey(req) {
   let key = getApiKey(req);
-  if (!key) {
-    const token = req.headers["x-device-token"] || req.query.deviceToken;
-    if (token) key = await getUserApiKey(token);
-  }
+  if (!key) key = await getUserApiKey(req.user.userId);
+  if (!key) key = MASTER_KEY || null;
   return key;
 }
 
@@ -86,7 +137,6 @@ async function proxyToYouTube(req, res, urlBuilder, cacheKey, cacheTable) {
     const url = urlBuilder(apiKey);
     const data = await fetchJson(url);
 
-    // Store in DB cache
     if (cacheTable && cacheKey) {
       await pool.query(
         `INSERT INTO ${cacheTable} (id, data) VALUES ($1, $2::jsonb)
@@ -99,8 +149,8 @@ async function proxyToYouTube(req, res, urlBuilder, cacheKey, cacheTable) {
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
-/* GET /api/handle/:handle — resolves to { id } */
-app.get("/api/handle/:handle", async (req, res) => {
+/* GET /api/handle/:handle */
+app.get("/api/handle/:handle", requireAuth, async (req, res) => {
   try {
     const h = req.params.handle;
     const { rows } = await pool.query(
@@ -124,7 +174,7 @@ app.get("/api/handle/:handle", async (req, res) => {
 });
 
 /* GET /api/channel/:id */
-app.get("/api/channel/:id", (req, res) => {
+app.get("/api/channel/:id", requireAuth, (req, res) => {
   const id = req.params.id;
   proxyToYouTube(req, res,
     (key) => `${YT}/channels?part=snippet,statistics&id=${id}&key=${key}`,
@@ -133,7 +183,7 @@ app.get("/api/channel/:id", (req, res) => {
 });
 
 /* GET /api/search?q=... */
-app.get("/api/search", (req, res) => {
+app.get("/api/search", requireAuth, (req, res) => {
   const q = req.query.q;
   if (!q) return res.status(400).json({ error: "Missing query" });
   proxyToYouTube(req, res,

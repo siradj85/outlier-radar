@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { en, ar } from "./translations";
+import { api, getToken, setToken } from "./api";
+import LoginPage from "./components/LoginPage";
+import RegisterPage from "./components/RegisterPage";
 
 let sugTimer;
-let deviceToken = "";
-const API_BASE = import.meta.env.VITE_API_URL || "";
-
 const STAGES = [
   { icon: "📡", key: "stage0" },
   { icon: "⚡", key: "stage1" },
@@ -37,14 +37,6 @@ function parseUrl(s) {
   m = s.match(/@([^\/\s?]+)/);
   if (m) return { type: "handle", val: m[1] };
   return { type: "handle", val: s };
-}
-
-async function fetchJ(u) {
-  const h = deviceToken ? { "x-device-token": deviceToken } : undefined;
-  const r = await fetch(API_BASE + u, h ? { headers: h } : undefined);
-  const d = await r.json();
-  if (d.error) throw new Error(d.error.message || "API Error");
-  return d;
 }
 
 function fmt(n) {
@@ -85,7 +77,7 @@ async function resolveId(parsed) {
     if (parsed.type === "id") return parsed.val;
     const c = getCache("h:" + parsed.val);
     if (c) return c;
-    const d = await fetchJ(`/api/handle/${encodeURIComponent(parsed.val)}`);
+    const d = await api.get(`/api/handle/${encodeURIComponent(parsed.val)}`);
     if (d.id) { setCache("h:" + parsed.val, d.id); return d.id; }
     return null;
   } catch { return null; }
@@ -100,7 +92,7 @@ async function fetchChannel(id) {
   const c = getCache("ch:" + id);
   if (c) return c;
   try {
-    const d = await fetchJ(`/api/channel/${id}`);
+    const d = await api.get(`/api/channel/${id}`);
     if (!d.items || !d.items.length) return null;
     const ch = d.items[0], st = ch.statistics, sn = ch.snippet;
 
@@ -133,24 +125,19 @@ function calcVerdict(data, cat) {
   const avgViews = data.reduce((s, c) => s + c.totalViews, 0) / n;
   const avgFreq = data.reduce((s, c) => s + c.estFreq, 0) / n;
 
-  /* Normalize each factor 0-100 */
   const viralScore = Math.min(100, (avgVR / 15) * 100);
   const ageScore = Math.min(100, (1 - Math.min(1, nicheAge / 60)) * 100);
   const pivotScore = Math.min(100, pivotR * 100);
   const freqScore = Math.min(100, (avgFreq / 10) * 100);
 
-  /* Engagement proxy: higher viralRatio with recent views = good */
   const avgRecentN = data.reduce((s, c) => s + c.avgRecent, 0) / n;
   const engScore = Math.min(100, Math.round(viralScore * 0.4 + freqScore * 0.3 + (avgRecentN > 1000 ? 30 : avgRecentN > 100 ? 15 : 5)));
 
-  /* Competition: higher for old, big channels */
   const compScore = Math.min(100, Math.round(ageScore < 50 ? ageScore : 50 + (Math.min(1, avgSubs / 200000)) * 50));
 
-  /* Health: weighted composite */
   const healthRaw = viralScore * 0.3 + ageScore * 0.2 + pivotScore * 0.1 + (1 - compScore / 100) * 0.15 + freqScore * 0.1 + (engScore / 100) * 0.15;
   const healthScore = Math.max(0, Math.min(100, Math.round(healthRaw)));
 
-  /* RPM */
   const rpmAvg = (cat.rpm[0] + cat.rpm[1]) / 2;
   const estMonthly = Math.round((avgViews / 12) * rpmAvg / 1000);
 
@@ -176,7 +163,8 @@ export default function App() {
   const [lang, setLang] = useState("en");
   const t = (k) => (lang === "ar" ? ar : en)[k] || k;
   const dir = lang === "ar" ? "rtl" : "ltr";
-  const [page, setPage] = useState("main");
+  const [page, setPage] = useState("login");
+  const [user, setUser] = useState(null);
   const [niche, setNiche] = useState("");
   const [urls, setUrls] = useState(["", "", ""]);
   const [loading, setLoading] = useState(false);
@@ -193,20 +181,44 @@ export default function App() {
   const [showKeyInput, setShowKeyInput] = useState(false);
   const [userApiKey, setUserApiKey] = useState("");
 
-  // Device token — generated once, stored in localStorage
-  const [dt] = useState(() => {
-    let t = localStorage.getItem("nr_device_token");
-    if (!t) { t = crypto.randomUUID(); localStorage.setItem("nr_device_token", t); }
-    deviceToken = t;
-    return t;
-  });
+  /* ─── Auth ─── */
+  useEffect(() => {
+    const token = getToken();
+    if (token) {
+      api.get("/api/auth/me").then(d => {
+        setUser(d.user);
+        setPage("main");
+      }).catch(() => {
+        setToken(null);
+        setPage("login");
+      });
+    } else {
+      setPage("login");
+    }
+  }, []);
 
-  useEffect(() => { checkHasKey(); }, []);
+  useEffect(() => {
+    const handler = () => { setUser(null); setPage("login"); };
+    window.addEventListener("auth:logout", handler);
+    return () => window.removeEventListener("auth:logout", handler);
+  }, []);
+
+  function handleAuth(userData) {
+    setUser(userData);
+    setPage("main");
+  }
+
+  function logout() {
+    setToken(null);
+    setUser(null);
+    setPage("login");
+  }
+
+  useEffect(() => { if (user) checkHasKey(); }, [user]);
 
   async function checkHasKey() {
     try {
-      const r = await fetch("/api/key", { headers: { "x-device-token": dt } });
-      const d = await r.json();
+      const d = await api.get("/api/key");
       if (!d.hasKey) setShowKeyInput(true);
     } catch { setShowKeyInput(true); }
   }
@@ -214,12 +226,7 @@ export default function App() {
   async function saveApiKey() {
     if (!userApiKey.trim()) return;
     try {
-      const r = await fetch("/api/key", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deviceToken: dt, apiKey: userApiKey.trim() }),
-      });
-      const d = await r.json();
+      const d = await api.post("/api/key", { apiKey: userApiKey.trim() });
       if (d.ok) { setShowKeyInput(false); setUserApiKey(""); }
     } catch {}
   }
@@ -272,7 +279,7 @@ export default function App() {
     if (!q) return setSearchError(t("error_niche"));
     setSearchError(""); setSearchResults([]); setSelected([]); setSearchLoading(true);
     try {
-      const d = await fetchJ(`/api/search?q=${encodeURIComponent(q)}`);
+      const d = await api.get(`/api/search?q=${encodeURIComponent(q)}`);
       if (!d.items || d.items.length === 0) { setSearchError(t("keyword_no_results")); setSearchLoading(false); return; }
       setSearchResults(d.items.map(item => ({
         id: item.id.channelId,
@@ -436,7 +443,6 @@ export default function App() {
 
     return (
       <div className="animate-fade-in" style={{ animation: "fadeIn 0.6s" }}>
-        {/* API quota warning */}
         <div className="bg-amber-900/20 border border-amber-800/50 text-amber-300 rounded-xl px-4 py-2 mb-4 text-xs text-center">
           ⚠️ {lang === "ar" ? `تم تحليل ${r.channelCount} قنوات. النتائج أكثر دقة مع 5 قنوات أو أكثر.` : `${r.channelCount} channels analyzed. Results are more reliable with 5+ channels.`}
         </div>
@@ -688,6 +694,14 @@ export default function App() {
     );
   }
 
+  /* ─── Auth pages ─── */
+  if (page === "login" || !user) {
+    return <LoginPage onAuth={handleAuth} gotoRegister={() => setPage("register")} t={t} lang={lang} />;
+  }
+  if (page === "register") {
+    return <RegisterPage onAuth={handleAuth} gotoLogin={() => setPage("login")} t={t} lang={lang} />;
+  }
+
   const nav = [
     { id: "main", label_key: "nav_home" },
     { id: "how", label_key: "nav_how" },
@@ -704,8 +718,14 @@ export default function App() {
                 className={`transition ${page === n.id ? "text-amber-400 font-semibold" : "text-gray-500 hover:text-gray-300"}`}>{t(n.label_key)}</button>
             ))}
           </div>
-          <button onClick={() => setLang(lang === "en" ? "ar" : "en")}
-            className="text-xs text-gray-400 hover:text-white transition border border-gray-700 rounded-lg px-3 py-1">{t("lang_switch")}</button>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setLang(lang === "en" ? "ar" : "en")}
+              className="text-xs text-gray-400 hover:text-white transition border border-gray-700 rounded-lg px-3 py-1">{t("lang_switch")}</button>
+            {user && (
+              <button onClick={logout}
+                className="text-xs text-gray-400 hover:text-red-400 transition border border-gray-700 rounded-lg px-3 py-1">{t("auth_logout")}</button>
+            )}
+          </div>
         </div>
         {page === "main" && renderMain()}
         {page === "how" && renderHow()}
