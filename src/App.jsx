@@ -180,6 +180,7 @@ export default function App() {
   const [suggestions, setSuggestions] = useState([]);
   const [showKeyInput, setShowKeyInput] = useState(false);
   const [userApiKey, setUserApiKey] = useState("");
+  const [popupBlocked, setPopupBlocked] = useState(false);
 
   /* ─── Auth ─── */
   useEffect(() => {
@@ -354,7 +355,7 @@ export default function App() {
     if (!r) return;
     const labelText = lang === "ar" ? r.labelAr : r.label;
 
-    const html = `<html lang="${lang}" dir="${dir}"><head><meta charset="UTF-8"><title>Niche Radar Report</title>
+    const html = `<!DOCTYPE html><html lang="${lang}" dir="${dir}"><head><meta charset="UTF-8"><title>Niche Radar Report</title>
     <style>
       body{font-family:Arial,sans-serif;padding:30px;color:#222;direction:${dir};max-width:700px;margin:auto}
       h1{color:#1a73e8;font-size:24px;margin:0 0 4px}
@@ -385,17 +386,15 @@ export default function App() {
     </table>
     <h2>${lang === "ar" ? "القنوات المحللة" : "Channels Analyzed"}</h2>
     ${chanData.map(ch => `<div class="ch"><strong>${ch.title}</strong> &mdash; ${fmt(ch.subs)} ${lang === "ar" ? "مشترك" : "subs"}, ${fmt(ch.totalViews)} ${lang === "ar" ? "مشاهدة" : "views"}, Ratio: ${ch.viralRatio}x, Age: ${ch.trueAgeMonths}mo${ch.isPivot ? ' <span class="tag">🔄 Pivot Detected</span>' : ""}</div>`).join("")}
-    <p class="footer">Niche Radar &copy; 2026</p></body></html>`;
+    <p class="footer">Niche Radar &copy; 2026</p>
+    <script>window.onload = function () { setTimeout(function () { window.print(); }, 500); };<\/script>
+    </body></html>`;
 
-    const iframe = document.createElement("iframe");
-    iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;";
-    document.body.appendChild(iframe);
-    const doc = iframe.contentWindow.document;
-    doc.open(); doc.write(html); doc.close();
-    setTimeout(() => {
-      try { iframe.contentWindow.print(); } catch { window.print(); }
-      setTimeout(() => { document.body.removeChild(iframe); }, 1000);
-    }, 600);
+    setPopupBlocked(false);
+    const win = window.open("", "_blank", "width=800,height=700,scrollbars=yes");
+    if (!win) { setPopupBlocked(true); return; }
+    win.document.write(html);
+    win.document.close();
   }
 
   /* ─── Loading ─── */
@@ -474,6 +473,7 @@ export default function App() {
           <h3 className="text-white font-semibold">{chanData.length} {t("results_found")}</h3>
           {result && <button onClick={printPdf} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">{t("download_pdf")}</button>}
         </div>
+        {popupBlocked && <div className="bg-amber-900/20 border border-amber-700/50 text-amber-300 rounded-xl px-4 py-3 mb-4 text-xs text-center">{lang === "ar" ? "⚠️ تعذّر فتح التقرير. الرجاء السماح للنوافذ المنبثقة (pop-ups) لهذا الموقع." : "⚠️ Report couldn't open. Please allow pop-ups for this site."}</div>}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
           {chanData.map(ch => (
@@ -695,11 +695,11 @@ export default function App() {
   }
 
   /* ─── Auth pages ─── */
-  if (page === "login" || !user) {
+  if (!user) {
+    if (page === "register") {
+      return <RegisterPage onAuth={handleAuth} gotoLogin={() => setPage("login")} t={t} lang={lang} />;
+    }
     return <LoginPage onAuth={handleAuth} gotoRegister={() => setPage("register")} t={t} lang={lang} />;
-  }
-  if (page === "register") {
-    return <RegisterPage onAuth={handleAuth} gotoLogin={() => setPage("login")} t={t} lang={lang} />;
   }
 
   const nav = [

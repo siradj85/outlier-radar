@@ -33,6 +33,16 @@ CREATE TABLE IF NOT EXISTS search_cache (
   data JSONB NOT NULL,
   cached_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  email TEXT NOT NULL,
+  code TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_resets_email_code ON password_resets(email, code);
 `;
 
 const MIGRATIONS = `

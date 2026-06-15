@@ -13,8 +13,9 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const YT = "https://www.googleapis.com/youtube/v3";
 const MASTER_KEY = process.env.MASTER_YOUTUBE_API_KEY || "";
-const CORS_ORIGIN = process.env.CORS_ORIGIN || "https://siradj85.github.io";
-app.use(cors({ origin: CORS_ORIGIN }));
+const RAW = process.env.CORS_ORIGIN || "https://siradj85.github.io,https://tuberanke.com";
+const CORS_ORIGINS = RAW.split(",").map(s => s.trim());
+app.use(cors({ origin: CORS_ORIGINS }));
 app.use(express.json());
 
 /* ─── Helpers ─── */
@@ -190,6 +191,84 @@ app.get("/api/search", requireAuth, (req, res) => {
     (key) => `${YT}/search?part=snippet&q=${encodeURIComponent(q)}&type=channel&maxResults=15&key=${key}`,
     q, "search_cache"
   );
+});
+
+/* ─── Password Reset ─── */
+
+const RESET_CODE_EXPIRY = 60 * 60 * 1000; // 1 hour
+const SMTP_HOST = process.env.SMTP_HOST || "";
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587", 10);
+const SMTP_USER = process.env.SMTP_USER || "";
+const SMTP_PASS = process.env.SMTP_PASS || "";
+const SMTP_FROM = process.env.SMTP_FROM || "noreply@tuberanke.com";
+
+function generateCode() {
+  return Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
+async function sendEmail(to, subject, text) {
+  if (!SMTP_HOST || !SMTP_USER) {
+    console.log(`[DEV] Password reset email to ${to}: ${subject} — ${text}`);
+    return;
+  }
+  try {
+    const nodemailer = await import("nodemailer");
+    const transport = nodemailer.default.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_PORT === 465,
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+    });
+    await transport.sendMail({ from: SMTP_FROM, to, subject, text });
+  } catch (e) {
+    console.error("Failed to send email:", e.message);
+  }
+}
+
+/* POST /api/auth/forgot */
+app.post("/api/auth/forgot", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Missing email" });
+
+    const { rows } = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
+    if (rows.length === 0) return res.json({ ok: true }); // Don't reveal if email exists
+
+    const code = generateCode();
+    await pool.query(
+      "INSERT INTO password_resets (email, code, expires_at) VALUES ($1, $2, NOW() + INTERVAL '1 hour')",
+      [email, code]
+    );
+
+    const subject = "Niche Radar — Password Reset Code";
+    const text = `Your password reset code is: ${code}\n\nThis code expires in 1 hour.\n\nIf you didn't request this, please ignore this email.`;
+    await sendEmail(email, subject, text);
+
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* POST /api/auth/reset */
+app.post("/api/auth/reset", async (req, res) => {
+  try {
+    const { email, code, password } = req.body;
+    if (!email || !code || !password) return res.status(400).json({ error: "Missing fields" });
+    if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
+
+    const { rows } = await pool.query(
+      `SELECT id FROM password_resets
+       WHERE email = $1 AND code = $2 AND used = FALSE AND expires_at > NOW()
+       ORDER BY created_at DESC LIMIT 1`,
+      [email, code]
+    );
+    if (rows.length === 0) return res.status(400).json({ error: "Invalid or expired reset code" });
+
+    const password_hash = await hashPassword(password);
+    await pool.query("UPDATE users SET password_hash = $1 WHERE email = $2", [password_hash, email]);
+    await pool.query("UPDATE password_resets SET used = TRUE WHERE id = $1", [rows[0].id]);
+
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* ─── Start ─── */
