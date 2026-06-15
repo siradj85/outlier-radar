@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { en, ar } from "./translations";
 
+let sugTimer;
+
 const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || "";
 const STAGES = [
   { icon: "📡", key: "stage0" },
@@ -55,15 +57,16 @@ function monthsDiff(a, b) {
   return Math.round(d);
 }
 
+const CACHE_VER = "v3";
 function getCache(k) {
   try {
-    const item = JSON.parse(localStorage.getItem("nr_" + k));
+    const item = JSON.parse(localStorage.getItem("nr_" + CACHE_VER + "_" + k));
     if (item && Date.now() - item.ts < 86400000) return item.data;
   } catch {}
   return null;
 }
 function setCache(k, d) {
-  try { localStorage.setItem("nr_" + k, JSON.stringify({ ts: Date.now(), data: d })); } catch {}
+  try { localStorage.setItem("nr_" + CACHE_VER + "_" + k, JSON.stringify({ ts: Date.now(), data: d })); } catch {}
 }
 
 function detectCat(niche, titles) {
@@ -179,6 +182,16 @@ export default function App() {
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
   const [chanData, setChanData] = useState([]);
+  const [mode, setMode] = useState("url");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [selected, setSelected] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
+
+  function toggleSelected(id) {
+    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
 
   function setUrl(i, v) { const c = [...urls]; c[i] = v; setUrls(c); }
 
@@ -218,6 +231,83 @@ export default function App() {
       setError(err?.message || t("error_urls"));
     }
     setLoading(false);
+  }
+
+  async function searchChannels() {
+    const q = niche.trim();
+    if (!q) return setSearchError(t("error_niche"));
+    if (!API_KEY) return setSearchError(t("error_api_key"));
+    setSearchError(""); setSearchResults([]); setSelected([]); setSearchLoading(true);
+    try {
+      const d = await fetchJ(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(q)}&type=channel&maxResults=15&key=${API_KEY}`);
+      if (!d.items || d.items.length === 0) { setSearchError(t("keyword_no_results")); setSearchLoading(false); return; }
+      setSearchResults(d.items.map(item => ({
+        id: item.id.channelId,
+        title: item.snippet.title,
+        thumb: item.snippet.thumbnails?.default?.url || "",
+        desc: item.snippet.description,
+        publishedAt: item.snippet.publishedAt,
+      })));
+    } catch { setSearchError(t("keyword_error")); }
+    setSearchLoading(false);
+  }
+
+  async function analyzeSelected() {
+    if (!niche.trim()) return setError(t("error_niche"));
+    if (selected.length === 0) return setError(t("keyword_select_none"));
+    if (!API_KEY) return setError(t("error_api_key"));
+    setError(""); setResult(null); setChanData([]); setSearchResults([]);
+    setSearchError(""); setLoading(true); setStage(0);
+
+    const loadP = (async () => {
+      for (let i = 0; i < 5; i++) { await new Promise(r => setTimeout(r, 4000)); setStage(i + 1); }
+    })();
+
+    try {
+      const chanResults = await Promise.allSettled(selected.map(fetchChannel));
+      const data = chanResults.filter(r => r.status === "fulfilled" && r.value).map(r => r.value);
+      if (data.length === 0) { setError(t("keyword_no_results")); setLoading(false); return; }
+
+      if (data.length < selected.length) {
+        const diff = selected.length - data.length;
+        setError(t("error_partial").replace("{n}", diff));
+      }
+
+      const cat = detectCat(niche, data.map(d => d.title));
+      const verdict = calcVerdict(data, cat);
+
+      await loadP;
+      setChanData(data);
+      setResult(verdict);
+    } catch (err) {
+      setError(err?.message || t("keyword_error"));
+    }
+    setLoading(false);
+  }
+
+  async function fetchSuggestions(q) {
+    if (!q.trim()) { setSuggestions([]); return; }
+    return new Promise((resolve) => {
+      const cb = "_sug" + Date.now();
+      window[cb] = (data) => {
+        const sug = data[1] ? data[1].map(s => s[0]) : [];
+        setSuggestions(sug.slice(0, 5));
+        resolve(sug);
+        delete window[cb];
+      };
+      const s = document.createElement("script");
+      s.src = `https://suggestqueries.google.com/complete/search?client=youtube&ds=yt&q=${encodeURIComponent(q)}&callback=${cb}`;
+      s.onload = () => s.remove();
+      s.onerror = () => { setSuggestions([]); resolve([]); delete window[cb]; };
+      document.head.appendChild(s);
+      setTimeout(() => { if (window[cb]) { setSuggestions([]); resolve([]); delete window[cb]; } }, 5000);
+    });
+  }
+
+  function onNicheChange(v) {
+    setNiche(v);
+    clearTimeout(sugTimer);
+    sugTimer = setTimeout(() => fetchSuggestions(v), 400);
   }
 
   function printPdf() {
@@ -448,34 +538,102 @@ export default function App() {
           <p className="text-gray-400 mt-2 text-sm">{t("tagline")}</p>
         </header>
 
+        {/* Mode tabs */}
+        <div className="flex gap-1 bg-[#111827] rounded-xl p-1 border border-gray-800 mb-6">
+          <button onClick={() => setMode("url")}
+            className={`flex-1 py-2 text-sm rounded-lg transition ${mode === "url" ? "bg-blue-600 text-white font-semibold" : "text-gray-400 hover:text-white"}`}>{t("nav_url")}</button>
+          <button onClick={() => setMode("keyword")}
+            className={`flex-1 py-2 text-sm rounded-lg transition ${mode === "keyword" ? "bg-blue-600 text-white font-semibold" : "text-gray-400 hover:text-white"}`}>{t("nav_keyword")}</button>
+        </div>
+
         <section className="bg-[#111827] rounded-2xl p-4 md:p-6 mb-6 shadow-lg border border-gray-800">
           <h2 className="text-white font-semibold text-sm mb-4">{t("analyze_h1")}</h2>
+
+          {/* Niche input — shared */}
           <div className="mb-4">
             <label className="block text-xs text-gray-400 mb-1">{t("niche_label")}</label>
-            <input type="text" value={niche} onChange={e => setNiche(e.target.value)} placeholder={t("niche_placeholder")}
+            <input type="text" value={niche} onChange={e => onNicheChange(e.target.value)} placeholder={t("niche_placeholder")}
               className="w-full bg-[#1e293b] border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition" />
-          </div>
-          <label className="block text-xs text-gray-400 mb-2">{t("urls_label")}</label>
-          <div className="space-y-2 mb-3">
-            {urls.map((u, i) => (
-              <div key={i} className="flex gap-2">
-                <input type="text" value={u} onChange={e => setUrl(i, e.target.value)} placeholder={t("url_placeholder")}
-                  className="flex-1 bg-[#1e293b] border border-gray-700 rounded-xl px-4 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition" />
-                {urls.length > 1 && <button onClick={() => setUrls(urls.filter((_, j) => j !== i))} className="text-gray-500 hover:text-red-400 px-2 text-lg">✕</button>}
+            {suggestions.length > 0 && mode === "keyword" && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                <span className="text-xs text-gray-500 mt-0.5">{t("keyword_suggestions")}:</span>
+                {suggestions.map(s => (
+                  <button key={s} onClick={() => { setNiche(s); setSuggestions([]); }}
+                    className="text-xs bg-gray-800 text-gray-300 px-2.5 py-1 rounded-full hover:bg-gray-700 hover:text-white transition">{s}</button>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-          {urls.length < 5 && <button onClick={() => setUrls([...urls, ""])} className="text-blue-400 text-xs hover:text-blue-300 transition mb-4 block">{t("add_url")}</button>}
-          <button onClick={analyze} disabled={loading}
-            className="w-full bg-gradient-to-l from-blue-600 to-amber-500 text-white font-semibold py-3 rounded-xl hover:opacity-90 transition disabled:opacity-50 text-sm">
-            {loading ? t("loading") : t("analyze_btn")}
-          </button>
+
+          {/* URL mode */}
+          {mode === "url" && (
+            <>
+              <label className="block text-xs text-gray-400 mb-2">{t("urls_label")}</label>
+              <div className="space-y-2 mb-3">
+                {urls.map((u, i) => (
+                  <div key={i} className="flex gap-2">
+                    <input type="text" value={u} onChange={e => setUrl(i, e.target.value)} placeholder={t("url_placeholder")}
+                      className="flex-1 bg-[#1e293b] border border-gray-700 rounded-xl px-4 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition" />
+                    {urls.length > 1 && <button onClick={() => setUrls(urls.filter((_, j) => j !== i))} className="text-gray-500 hover:text-red-400 px-2 text-lg">✕</button>}
+                  </div>
+                ))}
+              </div>
+              {urls.length < 5 && <button onClick={() => setUrls([...urls, ""])} className="text-blue-400 text-xs hover:text-blue-300 transition mb-4 block">{t("add_url")}</button>}
+              <button onClick={analyze} disabled={loading}
+                className="w-full bg-gradient-to-l from-blue-600 to-amber-500 text-white font-semibold py-3 rounded-xl hover:opacity-90 transition disabled:opacity-50 text-sm">
+                {loading ? t("loading") : t("analyze_btn")}
+              </button>
+            </>
+          )}
+
+          {/* Keyword mode */}
+          {mode === "keyword" && (
+            <>
+              <p className="text-xs text-gray-500 mb-3">{t("keyword_hint")}</p>
+              <div className="flex gap-2 mb-4">
+                <button onClick={searchChannels} disabled={searchLoading || loading}
+                  className="flex-1 bg-gradient-to-l from-blue-600 to-amber-500 text-white font-semibold py-2.5 rounded-xl hover:opacity-90 transition disabled:opacity-50 text-sm">
+                  {searchLoading ? t("keyword_searching") : (lang === "ar" ? "🔍 بحث" : "🔍 Search")}
+                </button>
+              </div>
+
+              {searchError && <div className="bg-red-900/40 border border-red-800 text-red-300 rounded-xl px-4 py-3 mb-4 text-sm text-center">{searchError}</div>}
+
+              {searchResults.length > 0 && (
+                <>
+                  <p className="text-xs text-gray-400 mb-2">{searchResults.length} {lang === "ar" ? "قناة متاحة" : "channels found"} — {selected.length > 0 ? `${selected.length} ${lang === "ar" ? "مختارة" : "selected"}` : t("keyword_select_none")}</p>
+                  <div className="max-h-64 overflow-y-auto space-y-2 mb-4 pr-1">
+                    {searchResults.map(ch => {
+                      const isSel = selected.includes(ch.id);
+                      return (
+                        <div key={ch.id} onClick={() => toggleSelected(ch.id)}
+                          className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition ${isSel ? "border-blue-500 bg-blue-900/20" : "border-gray-800 bg-[#1e293b] hover:border-gray-600"}`}>
+                          {ch.thumb ? <img src={ch.thumb} alt="" className="w-10 h-10 rounded-full shrink-0" /> : <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-xs text-gray-400 shrink-0">?</div>}
+                          <div className="min-w-0 flex-1">
+                            <p className={`text-sm font-semibold truncate ${isSel ? "text-blue-300" : "text-gray-200"}`}>{ch.title}</p>
+                            <p className="text-xs text-gray-500 truncate">{ch.desc || "—"}</p>
+                          </div>
+                          <div className={`w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition ${isSel ? "border-blue-500 bg-blue-500" : "border-gray-600"}`}>
+                            {isSel && <span className="text-white text-xs">✓</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button onClick={analyzeSelected} disabled={selected.length === 0 || loading}
+                    className="w-full bg-gradient-to-l from-emerald-600 to-blue-500 text-white font-semibold py-2.5 rounded-xl hover:opacity-90 transition disabled:opacity-50 text-sm">
+                    {loading ? t("loading") : (selected.length > 0 ? `${t("keyword_analyze_btn")} (${selected.length})` : t("keyword_analyze_btn"))}
+                  </button>
+                </>
+              )}
+            </>
+          )}
         </section>
 
         {error && <div className="bg-red-900/40 border border-red-800 text-red-300 rounded-xl px-4 py-3 mb-6 text-sm text-center">{error}</div>}
         {loading && renderLoading()}
         {result && renderResult()}
-        {!loading && !result && renderGuide()}
+        {!loading && !result && mode === "url" && renderGuide()}
       </>
     );
   }

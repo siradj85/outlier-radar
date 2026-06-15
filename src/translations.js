@@ -103,6 +103,16 @@ const en = {
   guide_2: "A young True Niche Age (under 2 years) means less competition. Old niches (>4 years) are often saturated.",
   guide_3: "High Pivot Rate means established channels are jumping into this niche — a strong signal of opportunity.",
   guide_4: "Higher RPM niches (Finance, Tech, Education) generate more revenue per view, but may be harder to break into.",
+  // Keyword search
+  nav_url: "URL Analysis",
+  nav_keyword: "Keyword Search",
+  keyword_hint: "Enter a keyword and click Search to find relevant channels",
+  keyword_searching: "Searching...",
+  keyword_no_results: "No channels found. Try a different keyword.",
+  keyword_select_none: "Select channels above to analyze",
+  keyword_analyze_btn: "Analyze Selected",
+  keyword_suggestions: "Suggestions",
+  keyword_error: "Search failed. Try a different keyword.",
 };
 
 const ar = {
@@ -198,6 +208,16 @@ const ar = {
   guide_2: "العمر الحقيقي الصغير (أقل من سنتين) يعني منافسة أقل. النتش القديم (>4 سنوات) غالباً مشبع.",
   guide_3: "نسبة تغيير مسار عالية تعني أن قنوات قديمة تدخل هذا النتش — إشارة قوية على الفرصة.",
   guide_4: "نتشات RPM العالية (مالية، تقنية، تعليم) تدر أرباحاً أعلى لكل مشاهدة، لكن المنافسة قد تكون أشد.",
+  // Keyword search
+  nav_url: "تحليل بالروابط",
+  nav_keyword: "بحث بالكلمات",
+  keyword_hint: "اكتب كلمة مفتاحية واضغط بحث لاستعراض القنوات",
+  keyword_searching: "جارٍ البحث...",
+  keyword_no_results: "لم يتم العثور على قنوات. جرب كلمة أخرى.",
+  keyword_select_none: "اختر قنوات من الأعلى لتحليلها",
+  keyword_analyze_btn: "حلل المختار",
+  keyword_suggestions: "اقتراحات",
+  keyword_error: "فشل البحث. جرب كلمة أخرى.",
 };
 
 export { en, ar };
