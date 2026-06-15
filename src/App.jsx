@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { en, ar } from "./translations";
 
 let sugTimer;
+let deviceToken = "";
+const API_BASE = import.meta.env.VITE_API_URL || "";
 
 const STAGES = [
   { icon: "📡", key: "stage0" },
@@ -38,7 +40,8 @@ function parseUrl(s) {
 }
 
 async function fetchJ(u) {
-  const r = await fetch(u);
+  const h = deviceToken ? { "x-device-token": deviceToken } : undefined;
+  const r = await fetch(API_BASE + u, h ? { headers: h } : undefined);
   const d = await r.json();
   if (d.error) throw new Error(d.error.message || "API Error");
   return d;
@@ -187,6 +190,39 @@ export default function App() {
   const [searchError, setSearchError] = useState("");
   const [selected, setSelected] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
+  const [showKeyInput, setShowKeyInput] = useState(false);
+  const [userApiKey, setUserApiKey] = useState("");
+
+  // Device token — generated once, stored in localStorage
+  const [dt] = useState(() => {
+    let t = localStorage.getItem("nr_device_token");
+    if (!t) { t = crypto.randomUUID(); localStorage.setItem("nr_device_token", t); }
+    deviceToken = t;
+    return t;
+  });
+
+  useEffect(() => { checkHasKey(); }, []);
+
+  async function checkHasKey() {
+    try {
+      const r = await fetch("/api/key", { headers: { "x-device-token": dt } });
+      const d = await r.json();
+      if (!d.hasKey) setShowKeyInput(true);
+    } catch { setShowKeyInput(true); }
+  }
+
+  async function saveApiKey() {
+    if (!userApiKey.trim()) return;
+    try {
+      const r = await fetch("/api/key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceToken: dt, apiKey: userApiKey.trim() }),
+      });
+      const d = await r.json();
+      if (d.ok) { setShowKeyInput(false); setUserApiKey(""); }
+    } catch {}
+  }
 
   function toggleSelected(id) {
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -533,6 +569,24 @@ export default function App() {
           </h1>
           <p className="text-gray-400 mt-2 text-sm">{t("tagline")}</p>
         </header>
+
+        {/* API Key banner */}
+        {showKeyInput ? (
+          <div className="bg-amber-900/20 border border-amber-700/50 rounded-xl p-4 mb-6 text-center">
+            <p className="text-amber-300 text-sm font-semibold mb-2">{t("key_title")}</p>
+            <p className="text-gray-400 text-xs mb-3">{t("key_desc")}</p>
+            <div className="flex gap-2 max-w-md mx-auto">
+              <input type="text" value={userApiKey} onChange={e => setUserApiKey(e.target.value)} placeholder={t("key_placeholder")}
+                className="flex-1 bg-[#1e293b] border border-gray-700 rounded-xl px-4 py-2.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500 transition" />
+              <button onClick={saveApiKey}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition">{t("key_save")}</button>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center mb-4">
+            <button onClick={() => setShowKeyInput(true)} className="text-xs text-gray-500 hover:text-gray-300 transition underline">{t("key_change")}</button>
+          </div>
+        )}
 
         {/* Mode tabs */}
         <div className="flex gap-1 bg-[#111827] rounded-xl p-1 border border-gray-800 mb-6">

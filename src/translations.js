@@ -113,6 +113,12 @@ const en = {
   keyword_analyze_btn: "Analyze Selected",
   keyword_suggestions: "Suggestions",
   keyword_error: "Search failed. Try a different keyword.",
+  // API key
+  key_title: "YouTube API Key Required",
+  key_desc: "This tool needs a YouTube Data API v3 key to fetch data. Get one from the Google Cloud Console.",
+  key_placeholder: "Paste your API key (AIza...)",
+  key_save: "Save",
+  key_change: "Change API Key",
 };
 
 const ar = {
@@ -218,6 +224,12 @@ const ar = {
   keyword_analyze_btn: "حلل المختار",
   keyword_suggestions: "اقتراحات",
   keyword_error: "فشل البحث. جرب كلمة أخرى.",
+  // API key
+  key_title: "مطلوب مفتاح YouTube API",
+  key_desc: "هذه الأداة تحتاج مفتاح YouTube Data API v3 لجلب البيانات. احصل عليه من Google Cloud Console.",
+  key_placeholder: "الصق مفتاح API (AIza...)",
+  key_save: "حفظ",
+  key_change: "تغيير مفتاح API",
 };
 
 export { en, ar };
