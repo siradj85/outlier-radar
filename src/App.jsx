@@ -3,7 +3,6 @@ import { en, ar } from "./translations";
 
 let sugTimer;
 
-const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY || "";
 const STAGES = [
   { icon: "📡", key: "stage0" },
   { icon: "⚡", key: "stage1" },
@@ -83,8 +82,8 @@ async function resolveId(parsed) {
     if (parsed.type === "id") return parsed.val;
     const c = getCache("h:" + parsed.val);
     if (c) return c;
-    const d = await fetchJ(`https://www.googleapis.com/youtube/v3/channels?part=snippet&forHandle=${encodeURIComponent(parsed.val)}&key=${API_KEY}`);
-    if (d.items && d.items.length) { setCache("h:" + parsed.val, d.items[0].id); return d.items[0].id; }
+    const d = await fetchJ(`/api/handle/${encodeURIComponent(parsed.val)}`);
+    if (d.id) { setCache("h:" + parsed.val, d.id); return d.id; }
     return null;
   } catch { return null; }
 }
@@ -98,7 +97,7 @@ async function fetchChannel(id) {
   const c = getCache("ch:" + id);
   if (c) return c;
   try {
-    const d = await fetchJ(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${id}&key=${API_KEY}`);
+    const d = await fetchJ(`/api/channel/${id}`);
     if (!d.items || !d.items.length) return null;
     const ch = d.items[0], st = ch.statistics, sn = ch.snippet;
 
@@ -199,7 +198,6 @@ export default function App() {
     const valid = urls.filter(u => u.trim());
     if (!niche.trim()) return setError(t("error_niche"));
     if (valid.length < 1) return setError(t("error_urls"));
-    if (!API_KEY) return setError(t("error_api_key"));
     setError(""); setResult(null); setChanData([]); setLoading(true); setStage(0);
 
     const loadP = (async () => {
@@ -236,10 +234,9 @@ export default function App() {
   async function searchChannels() {
     const q = niche.trim();
     if (!q) return setSearchError(t("error_niche"));
-    if (!API_KEY) return setSearchError(t("error_api_key"));
     setSearchError(""); setSearchResults([]); setSelected([]); setSearchLoading(true);
     try {
-      const d = await fetchJ(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(q)}&type=channel&maxResults=15&key=${API_KEY}`);
+      const d = await fetchJ(`/api/search?q=${encodeURIComponent(q)}`);
       if (!d.items || d.items.length === 0) { setSearchError(t("keyword_no_results")); setSearchLoading(false); return; }
       setSearchResults(d.items.map(item => ({
         id: item.id.channelId,
@@ -255,7 +252,6 @@ export default function App() {
   async function analyzeSelected() {
     if (!niche.trim()) return setError(t("error_niche"));
     if (selected.length === 0) return setError(t("keyword_select_none"));
-    if (!API_KEY) return setError(t("error_api_key"));
     setError(""); setResult(null); setChanData([]); setSearchResults([]);
     setSearchError(""); setLoading(true); setStage(0);
 

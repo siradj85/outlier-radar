@@ -5,4 +5,9 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: "/outlier-radar/",
+  server: {
+    proxy: {
+      "/api": "http://localhost:3001",
+    },
+  },
 })
