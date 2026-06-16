@@ -98,6 +98,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'free';
 
 -- Add trial_ends_at column if missing
 ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ;
+
+-- Add PayPal subscription id if missing
+ALTER TABLE users ADD COLUMN IF NOT EXISTS paypal_subscription_id TEXT;
 `;
 
 const DEFAULT_AFFILIATE_TOOLS = [

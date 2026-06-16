@@ -517,6 +517,72 @@ app.delete("/api/admin/niche-requests/:id", requireAuth, requireAdmin, async (re
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ─── PayPal Subscriptions ─── */
+const PAYPAL_ENV = process.env.PAYPAL_ENV || "sandbox";
+const PAYPAL_BASE = PAYPAL_ENV === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
+const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID || "";
+const PAYPAL_SECRET = process.env.PAYPAL_SECRET || "";
+const PAYPAL_PLAN_ID = process.env.PAYPAL_PLAN_ID || "";
+
+async function paypalToken() {
+  const auth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_SECRET}`).toString("base64");
+  const r = await fetch(`${PAYPAL_BASE}/v1/oauth2/token`, {
+    method: "POST",
+    headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
+    body: "grant_type=client_credentials",
+  });
+  const d = await r.json();
+  if (!d.access_token) throw new Error("PayPal auth failed");
+  return d.access_token;
+}
+
+async function paypalGetSubscription(subId) {
+  const token = await paypalToken();
+  const r = await fetch(`${PAYPAL_BASE}/v1/billing/subscriptions/${subId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return r.json();
+}
+
+app.get("/api/paypal/config", (req, res) => {
+  res.json({ clientId: PAYPAL_CLIENT_ID, planId: PAYPAL_PLAN_ID, env: PAYPAL_ENV });
+});
+
+app.post("/api/paypal/activate", requireAuth, async (req, res) => {
+  try {
+    const { subscriptionID } = req.body;
+    if (!subscriptionID) return res.status(400).json({ error: "Missing subscriptionID" });
+    const sub = await paypalGetSubscription(subscriptionID);
+    if (!sub || !["ACTIVE", "APPROVED"].includes(sub.status)) {
+      return res.status(400).json({ error: "subscription_not_active", status: sub && sub.status });
+    }
+    if (PAYPAL_PLAN_ID && sub.plan_id && sub.plan_id !== PAYPAL_PLAN_ID) {
+      return res.status(400).json({ error: "plan_mismatch" });
+    }
+    await pool.query("UPDATE users SET plan='pro', paypal_subscription_id=$1 WHERE id=$2", [subscriptionID, req.user.userId]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* PayPal webhook — re-verifies real status from PayPal (does not trust the payload) */
+app.post("/api/paypal/webhook", async (req, res) => {
+  try {
+    const event = req.body || {};
+    const type = event.event_type || "";
+    const subId = event.resource && (event.resource.id || event.resource.billing_agreement_id);
+    if (subId && type.startsWith("BILLING.SUBSCRIPTION")) {
+      const sub = await paypalGetSubscription(subId).catch(() => null);
+      const status = sub && sub.status;
+      if (status === "ACTIVE") {
+        await pool.query("UPDATE users SET plan='pro' WHERE paypal_subscription_id=$1", [subId]);
+      } else if (["CANCELLED", "EXPIRED", "SUSPENDED"].includes(status)) {
+        await pool.query("UPDATE users SET plan='free', paypal_subscription_id=NULL WHERE paypal_subscription_id=$1", [subId]);
+      }
+    }
+    res.sendStatus(200);
+  } catch (e) { res.sendStatus(200); }
+});
+
 /* ─── Password Reset ─── */
 
 const RESET_CODE_EXPIRY = 60 * 60 * 1000; // 1 hour
