@@ -631,7 +631,7 @@ app.post("/api/auth/forgot", async (req, res) => {
       [email, code]
     );
 
-    const subject = "Niche Radar — Password Reset Code";
+    const subject = "TubeRanke — Password Reset Code";
     const text = `Your password reset code is: ${code}\n\nThis code expires in 1 hour.\n\nIf you didn't request this, please ignore this email.`;
     await sendEmail(email, subject, text);
 
@@ -666,7 +666,7 @@ app.post("/api/auth/reset", async (req, res) => {
 async function start() {
   await initDb();
   app.listen(PORT, () => {
-    console.log(`Niche Radar API running on http://localhost:${PORT}`);
+    console.log(`TubeRanke API running on http://localhost:${PORT}`);
   });
 }
 start();
