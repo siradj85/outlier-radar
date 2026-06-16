@@ -323,12 +323,36 @@ app.post("/api/admin/users/:id/trial", requireAuth, requireAdmin, async (req, re
   try {
     const daysRaw = await getSetting("trial_days", 3);
     const defaultDays = parseInt(daysRaw, 10);
-    const days = parseInt(req.body.days || defaultDays, 10);
-    if (days < 1) return res.status(400).json({ error: "Days must be at least 1" });
-    await pool.query(
-      "UPDATE users SET trial_ends_at = NOW() + make_interval(days => $1) WHERE id = $2",
-      [days, req.params.id]
-    );
+    const days = parseInt(req.body.days, 10);
+    if (isNaN(days)) {
+      const d = defaultDays;
+      if (d < 1) return res.status(400).json({ error: "Days must be at least 1" });
+      await pool.query(
+        "UPDATE users SET trial_ends_at = NOW() + make_interval(days => $1) WHERE id = $2",
+        [d, req.params.id]
+      );
+    } else if (days <= 0) {
+      await pool.query("UPDATE users SET trial_ends_at = NULL WHERE id = $1", [req.params.id]);
+    } else {
+      await pool.query(
+        "UPDATE users SET trial_ends_at = NOW() + make_interval(days => $1) WHERE id = $2",
+        [days, req.params.id]
+      );
+    }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* DELETE /api/admin/users/:id */
+app.delete("/api/admin/users/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT email FROM users WHERE id = $1", [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: "User not found" });
+    if (rows[0].email === ADMIN_EMAIL) return res.status(403).json({ error: "Cannot delete admin account" });
+    await pool.query("DELETE FROM usage_daily WHERE user_id = $1", [req.params.id]);
+    await pool.query("DELETE FROM user_api_keys WHERE user_id = $1", [req.params.id]);
+    await pool.query("DELETE FROM password_resets WHERE email = $1", [rows[0].email]);
+    await pool.query("DELETE FROM users WHERE id = $1", [req.params.id]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
