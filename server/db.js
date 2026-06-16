@@ -140,6 +140,7 @@ const DEFAULT_SETTINGS = {
   ga_measurement_id: "",
   logo_url: "",
   marketing_head: "",
+  ads: "[]",
   affiliate_tools: JSON.stringify(DEFAULT_AFFILIATE_TOOLS),
   discoveries: JSON.stringify(DEFAULT_DISCOVERIES),
 };

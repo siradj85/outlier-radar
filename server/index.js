@@ -372,7 +372,7 @@ app.put("/api/admin/settings", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { key, value } = req.body;
     if (!key || value === undefined) return res.status(400).json({ error: "Missing key or value" });
-    const allowed = ["free_daily_limit", "trial_days", "pro_price", "adsense_client", "adsense_slot", "ads_enabled", "contact_email", "affiliate_tools", "ga_measurement_id", "logo_url", "marketing_head", "page_terms_en", "page_terms_ar", "page_privacy_en", "page_privacy_ar", "page_refund_en", "page_refund_ar", "landing_hero_en", "landing_hero_ar", "footer_text_en", "footer_text_ar", "social_links", "trusted_logos", "testimonials", "faqs", "discoveries"];
+    const allowed = ["free_daily_limit", "trial_days", "pro_price", "adsense_client", "adsense_slot", "ads_enabled", "contact_email", "affiliate_tools", "ga_measurement_id", "logo_url", "marketing_head", "page_terms_en", "page_terms_ar", "page_privacy_en", "page_privacy_ar", "page_refund_en", "page_refund_ar", "landing_hero_en", "landing_hero_ar", "footer_text_en", "footer_text_ar", "social_links", "trusted_logos", "testimonials", "faqs", "discoveries", "ads"];
     if (!allowed.includes(key)) return res.status(400).json({ error: "Invalid setting key" });
     await pool.query(
       "INSERT INTO app_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2",
@@ -386,7 +386,7 @@ app.put("/api/admin/settings", requireAuth, requireAdmin, async (req, res) => {
 app.get("/api/public/settings", async (req, res) => {
   try {
     const contentKeys = ["page_terms_en", "page_terms_ar", "page_privacy_en", "page_privacy_ar", "page_refund_en", "page_refund_ar", "landing_hero_en", "landing_hero_ar", "footer_text_en", "footer_text_ar", "marketing_head"];
-    const jsonKeys = ["affiliate_tools", "social_links", "trusted_logos", "testimonials", "faqs"];
+    const jsonKeys = ["affiliate_tools", "social_links", "trusted_logos", "testimonials", "faqs", "ads"];
     const keys = ["pro_price", "free_daily_limit", "trial_days", "adsense_client", "adsense_slot", "ads_enabled", "contact_email", "ga_measurement_id", "logo_url", ...contentKeys, ...jsonKeys];
     const { rows } = await pool.query("SELECT key, value FROM app_settings WHERE key = ANY($1)", [keys]);
     const s = {};
@@ -407,6 +407,7 @@ app.get("/api/public/settings", async (req, res) => {
       trusted_logos: parseArr(s.trusted_logos),
       testimonials: parseArr(s.testimonials),
       faqs: parseArr(s.faqs),
+      ads: parseArr(s.ads),
     };
     for (const k of contentKeys) out[k] = s[k] || "";
     res.json(out);
