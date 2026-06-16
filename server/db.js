@@ -82,10 +82,23 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'free';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ;
 `;
 
+const DEFAULT_AFFILIATE_TOOLS = [
+  { name: "VidIQ", description_en: "YouTube keyword research & channel optimization tool", description_ar: "أداة أبحاث الكلمات المفتاحية وتحسين القنوات على يوتيوب", url: "https://vidiq.com/", badge: "Popular" },
+  { name: "TubeBuddy", description_en: "Browser extension for YouTube channel management", description_ar: "إضافة للمتصفح لإدارة قنوات يوتيوب", url: "https://www.tubebuddy.com/", badge: "Top Rated" },
+  { name: "Canva", description_en: "Easy thumbnail & graphic design for creators", description_ar: "تصميم صور مصغرة ورسوميات بسهولة لصناع المحتوى", url: "https://www.canva.com/", badge: "" },
+  { name: "Morningfame", description_en: "YouTube analytics & growth insights", description_ar: "تحليلات يوتيوب ورؤى النمو", url: "https://morningfa.me/", badge: "" },
+  { name: "Social Blade", description_en: "Social media statistics & channel tracking", description_ar: "إحصائيات التواصل الاجتماعي وتتبع القنوات", url: "https://socialblade.com/", badge: "" },
+  { name: "Repurpose.io", description_en: "Auto repurpose videos to shorts, reels & more", description_ar: "إعادة استخدام الفيديوهات تلقائياً لشورتس وريلز وأكثر", url: "https://repurpose.io/", badge: "New" },
+];
+
 const DEFAULT_SETTINGS = {
   free_daily_limit: String(FREE_DAILY_LIMIT),
   trial_days: String(TRIAL_DAYS),
   pro_price: "9",
+  adsense_client: "",
+  adsense_slot: "",
+  contact_email: "support@tuberanke.com",
+  affiliate_tools: JSON.stringify(DEFAULT_AFFILIATE_TOOLS),
 };
 
 async function initDb() {
