@@ -136,6 +136,7 @@ const DEFAULT_SETTINGS = {
   contact_email: "support@tuberanke.com",
   ga_measurement_id: "",
   logo_url: "",
+  marketing_head: "",
   affiliate_tools: JSON.stringify(DEFAULT_AFFILIATE_TOOLS),
   discoveries: JSON.stringify(DEFAULT_DISCOVERIES),
 };
