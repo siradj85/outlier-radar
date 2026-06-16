@@ -372,7 +372,7 @@ app.put("/api/admin/settings", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { key, value } = req.body;
     if (!key || value === undefined) return res.status(400).json({ error: "Missing key or value" });
-    const allowed = ["free_daily_limit", "trial_days", "pro_price", "adsense_client", "adsense_slot", "contact_email", "affiliate_tools"];
+    const allowed = ["free_daily_limit", "trial_days", "pro_price", "adsense_client", "adsense_slot", "contact_email", "affiliate_tools", "ga_measurement_id", "logo_url"];
     if (!allowed.includes(key)) return res.status(400).json({ error: "Invalid setting key" });
     await pool.query(
       "INSERT INTO app_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2",
@@ -385,7 +385,7 @@ app.put("/api/admin/settings", requireAuth, requireAdmin, async (req, res) => {
 /* GET /api/public/settings — public, non-sensitive display settings (for landing/ads) */
 app.get("/api/public/settings", async (req, res) => {
   try {
-    const keys = ["pro_price", "free_daily_limit", "trial_days", "adsense_client", "adsense_slot", "contact_email", "affiliate_tools"];
+    const keys = ["pro_price", "free_daily_limit", "trial_days", "adsense_client", "adsense_slot", "contact_email", "affiliate_tools", "ga_measurement_id", "logo_url"];
     const { rows } = await pool.query("SELECT key, value FROM app_settings WHERE key = ANY($1)", [keys]);
     const s = {};
     for (const r of rows) s[r.key] = r.value;
@@ -398,6 +398,8 @@ app.get("/api/public/settings", async (req, res) => {
       adsense_client: s.adsense_client || "",
       adsense_slot: s.adsense_slot || "",
       contact_email: s.contact_email || "",
+      ga_measurement_id: s.ga_measurement_id || "",
+      logo_url: s.logo_url || "",
       affiliate_tools: Array.isArray(tools) ? tools : [],
     });
   } catch (e) { res.status(500).json({ error: e.message }); }

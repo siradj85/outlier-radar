@@ -98,6 +98,8 @@ const DEFAULT_SETTINGS = {
   adsense_client: "",
   adsense_slot: "",
   contact_email: "support@tuberanke.com",
+  ga_measurement_id: "",
+  logo_url: "",
   affiliate_tools: JSON.stringify(DEFAULT_AFFILIATE_TOOLS),
 };
 
