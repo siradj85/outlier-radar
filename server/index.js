@@ -372,7 +372,7 @@ app.put("/api/admin/settings", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { key, value } = req.body;
     if (!key || value === undefined) return res.status(400).json({ error: "Missing key or value" });
-    const allowed = ["free_daily_limit", "trial_days", "pro_price", "adsense_client", "adsense_slot", "contact_email", "affiliate_tools", "ga_measurement_id", "logo_url"];
+    const allowed = ["free_daily_limit", "trial_days", "pro_price", "adsense_client", "adsense_slot", "contact_email", "affiliate_tools", "ga_measurement_id", "logo_url", "page_terms_en", "page_terms_ar", "page_privacy_en", "page_privacy_ar", "page_refund_en", "page_refund_ar", "landing_hero_en", "landing_hero_ar"];
     if (!allowed.includes(key)) return res.status(400).json({ error: "Invalid setting key" });
     await pool.query(
       "INSERT INTO app_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2",
@@ -385,13 +385,14 @@ app.put("/api/admin/settings", requireAuth, requireAdmin, async (req, res) => {
 /* GET /api/public/settings — public, non-sensitive display settings (for landing/ads) */
 app.get("/api/public/settings", async (req, res) => {
   try {
-    const keys = ["pro_price", "free_daily_limit", "trial_days", "adsense_client", "adsense_slot", "contact_email", "affiliate_tools", "ga_measurement_id", "logo_url"];
+    const contentKeys = ["page_terms_en", "page_terms_ar", "page_privacy_en", "page_privacy_ar", "page_refund_en", "page_refund_ar", "landing_hero_en", "landing_hero_ar"];
+    const keys = ["pro_price", "free_daily_limit", "trial_days", "adsense_client", "adsense_slot", "contact_email", "affiliate_tools", "ga_measurement_id", "logo_url", ...contentKeys];
     const { rows } = await pool.query("SELECT key, value FROM app_settings WHERE key = ANY($1)", [keys]);
     const s = {};
     for (const r of rows) s[r.key] = r.value;
     let tools = [];
     try { tools = JSON.parse(s.affiliate_tools || "[]"); } catch { tools = []; }
-    res.json({
+    const out = {
       pro_price: s.pro_price || "9",
       free_daily_limit: s.free_daily_limit || "10",
       trial_days: s.trial_days || "3",
@@ -401,7 +402,9 @@ app.get("/api/public/settings", async (req, res) => {
       ga_measurement_id: s.ga_measurement_id || "",
       logo_url: s.logo_url || "",
       affiliate_tools: Array.isArray(tools) ? tools : [],
-    });
+    };
+    for (const k of contentKeys) out[k] = s[k] || "";
+    res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
