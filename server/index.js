@@ -372,7 +372,7 @@ app.put("/api/admin/settings", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { key, value } = req.body;
     if (!key || value === undefined) return res.status(400).json({ error: "Missing key or value" });
-    const allowed = ["free_daily_limit", "trial_days", "pro_price", "adsense_client", "adsense_slot", "contact_email", "affiliate_tools", "ga_measurement_id", "logo_url", "page_terms_en", "page_terms_ar", "page_privacy_en", "page_privacy_ar", "page_refund_en", "page_refund_ar", "landing_hero_en", "landing_hero_ar", "footer_text_en", "footer_text_ar", "social_links", "trusted_logos", "testimonials", "faqs"];
+    const allowed = ["free_daily_limit", "trial_days", "pro_price", "adsense_client", "adsense_slot", "ads_enabled", "contact_email", "affiliate_tools", "ga_measurement_id", "logo_url", "page_terms_en", "page_terms_ar", "page_privacy_en", "page_privacy_ar", "page_refund_en", "page_refund_ar", "landing_hero_en", "landing_hero_ar", "footer_text_en", "footer_text_ar", "social_links", "trusted_logos", "testimonials", "faqs", "discoveries"];
     if (!allowed.includes(key)) return res.status(400).json({ error: "Invalid setting key" });
     await pool.query(
       "INSERT INTO app_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2",
@@ -387,7 +387,7 @@ app.get("/api/public/settings", async (req, res) => {
   try {
     const contentKeys = ["page_terms_en", "page_terms_ar", "page_privacy_en", "page_privacy_ar", "page_refund_en", "page_refund_ar", "landing_hero_en", "landing_hero_ar", "footer_text_en", "footer_text_ar"];
     const jsonKeys = ["affiliate_tools", "social_links", "trusted_logos", "testimonials", "faqs"];
-    const keys = ["pro_price", "free_daily_limit", "trial_days", "adsense_client", "adsense_slot", "contact_email", "ga_measurement_id", "logo_url", ...contentKeys, ...jsonKeys];
+    const keys = ["pro_price", "free_daily_limit", "trial_days", "adsense_client", "adsense_slot", "ads_enabled", "contact_email", "ga_measurement_id", "logo_url", ...contentKeys, ...jsonKeys];
     const { rows } = await pool.query("SELECT key, value FROM app_settings WHERE key = ANY($1)", [keys]);
     const s = {};
     for (const r of rows) s[r.key] = r.value;
@@ -398,6 +398,7 @@ app.get("/api/public/settings", async (req, res) => {
       trial_days: s.trial_days || "3",
       adsense_client: s.adsense_client || "",
       adsense_slot: s.adsense_slot || "",
+      ads_enabled: s.ads_enabled || "true",
       contact_email: s.contact_email || "",
       ga_measurement_id: s.ga_measurement_id || "",
       logo_url: s.logo_url || "",
@@ -409,6 +410,16 @@ app.get("/api/public/settings", async (req, res) => {
     };
     for (const k of contentKeys) out[k] = s[k] || "";
     res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* GET /api/discoveries — Pro-only: curated discovered niches */
+app.get("/api/discoveries", requireAuth, requirePro, async (req, res) => {
+  try {
+    const v = await getSetting("discoveries", "[]");
+    let list = [];
+    try { list = JSON.parse(v); } catch { list = []; }
+    res.json({ discoveries: Array.isArray(list) ? list : [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

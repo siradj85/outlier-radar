@@ -91,16 +91,35 @@ const DEFAULT_AFFILIATE_TOOLS = [
   { name: "Repurpose.io", description_en: "Auto repurpose videos to shorts, reels & more", description_ar: "إعادة استخدام الفيديوهات تلقائياً لشورتس وريلز وأكثر", url: "https://repurpose.io/", badge: "New" },
 ];
 
+const DEFAULT_DISCOVERIES = [
+  {
+    title_en: "Stoic Philosophy Shorts", title_ar: "شورتس الفلسفة الرواقية",
+    niche: "Self-improvement / Philosophy", metrics: "Faceless · ~$10 RPM · rising",
+    difficulty: "easy", channel_url: "", image: "",
+    reasons_en: "Faceless, reusable public-domain quotes, high watch-time on Shorts, and a young true-niche age (most channels started < 12 months ago) — strong algorithm push with low competition.",
+    reasons_ar: "بدون وجه، اقتباسات من الملك العام قابلة لإعادة الاستخدام، وقت مشاهدة عالٍ في الشورتس، وعمر نتش حقيقي صغير (معظم القنوات بدأت قبل أقل من 12 شهراً) — دفع قوي من الخوارزمية بمنافسة منخفضة.",
+  },
+  {
+    title_en: "AI Tools for Small Business", title_ar: "أدوات الذكاء الاصطناعي للأعمال الصغيرة",
+    niche: "Tech / Business", metrics: "High RPM ($15-25) · growing demand",
+    difficulty: "medium", channel_url: "", image: "",
+    reasons_en: "Very high RPM tech+business audience, constant stream of new tools to cover (evergreen + trending), and many channels pivoted in recently — a clear momentum signal.",
+    reasons_ar: "جمهور تقني وأعمال بـ RPM مرتفع جداً، وتدفّق مستمر من أدوات جديدة للتغطية (دائم + رائج)، وقنوات كثيرة دخلت النتش حديثاً — إشارة زخم واضحة.",
+  },
+];
+
 const DEFAULT_SETTINGS = {
   free_daily_limit: String(FREE_DAILY_LIMIT),
   trial_days: String(TRIAL_DAYS),
   pro_price: "9",
   adsense_client: "",
   adsense_slot: "",
+  ads_enabled: "true",
   contact_email: "support@tuberanke.com",
   ga_measurement_id: "",
   logo_url: "",
   affiliate_tools: JSON.stringify(DEFAULT_AFFILIATE_TOOLS),
+  discoveries: JSON.stringify(DEFAULT_DISCOVERIES),
 };
 
 async function initDb() {
