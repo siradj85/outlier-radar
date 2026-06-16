@@ -423,6 +423,100 @@ app.get("/api/discoveries", requireAuth, requirePro, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ─── Saved Reports (Pro) + Sharing ─── */
+app.post("/api/reports", requireAuth, requirePro, async (req, res) => {
+  try {
+    const { title, data } = req.body;
+    if (!data) return res.status(400).json({ error: "Missing data" });
+    const payload = typeof data === "string" ? data : JSON.stringify(data);
+    const { rows } = await pool.query(
+      "INSERT INTO reports (user_id, title, data) VALUES ($1,$2,$3) RETURNING id",
+      [req.user.userId, String(title || "Report").slice(0, 200), payload]
+    );
+    res.json({ ok: true, id: rows[0].id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/reports", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT id, title, share_id, created_at FROM reports WHERE user_id=$1 ORDER BY created_at DESC",
+      [req.user.userId]
+    );
+    res.json({ reports: rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/reports/:id", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT id, title, data, share_id, created_at FROM reports WHERE id=$1 AND user_id=$2",
+      [req.params.id, req.user.userId]
+    );
+    if (!rows.length) return res.status(404).json({ error: "not_found" });
+    res.json({ report: rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete("/api/reports/:id", requireAuth, async (req, res) => {
+  try {
+    await pool.query("DELETE FROM reports WHERE id=$1 AND user_id=$2", [req.params.id, req.user.userId]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/reports/:id/share", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "UPDATE reports SET share_id = COALESCE(share_id, gen_random_uuid()::text) WHERE id=$1 AND user_id=$2 RETURNING share_id",
+      [req.params.id, req.user.userId]
+    );
+    if (!rows.length) return res.status(404).json({ error: "not_found" });
+    res.json({ share_id: rows[0].share_id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/shared/:shareId", async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT title, data, created_at FROM reports WHERE share_id=$1", [req.params.shareId]);
+    if (!rows.length) return res.status(404).json({ error: "not_found" });
+    res.json({ report: rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ─── Niche Requests ─── */
+app.post("/api/niche-requests", requireAuth, async (req, res) => {
+  try {
+    const { request } = req.body;
+    if (!request || !request.trim()) return res.status(400).json({ error: "Missing request" });
+    await pool.query(
+      "INSERT INTO niche_requests (user_id, email, request) VALUES ($1,$2,$3)",
+      [req.user.userId, req.user.email, request.trim().slice(0, 500)]
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/admin/niche-requests", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT id, email, request, status, created_at FROM niche_requests ORDER BY created_at DESC");
+    res.json({ requests: rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/admin/niche-requests/:id/status", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const status = req.body.status === "done" ? "done" : "pending";
+    await pool.query("UPDATE niche_requests SET status=$1 WHERE id=$2", [status, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete("/api/admin/niche-requests/:id", requireAuth, requireAdmin, async (req, res) => {
+  try { await pool.query("DELETE FROM niche_requests WHERE id=$1", [req.params.id]); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* ─── Password Reset ─── */
 
 const RESET_CODE_EXPIRY = 60 * 60 * 1000; // 1 hour
