@@ -609,8 +609,12 @@ async function sendEmail(to, subject, text) {
       port: SMTP_PORT,
       secure: SMTP_PORT === 465,
       auth: { user: SMTP_USER, pass: SMTP_PASS },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     });
     await transport.sendMail({ from: SMTP_FROM, to, subject, text });
+    console.log(`Reset email sent to ${to}`);
   } catch (e) {
     console.error("Failed to send email:", e.message);
   }
@@ -631,11 +635,12 @@ app.post("/api/auth/forgot", async (req, res) => {
       [email, code]
     );
 
+    // Respond immediately; send the email in the background so the request never hangs on SMTP.
+    res.json({ ok: true });
+
     const subject = "TubeRanke — Password Reset Code";
     const text = `Your password reset code is: ${code}\n\nThis code expires in 1 hour.\n\nIf you didn't request this, please ignore this email.`;
-    await sendEmail(email, subject, text);
-
-    res.json({ ok: true });
+    sendEmail(email, subject, text).catch(e => console.error("sendEmail error:", e.message));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
