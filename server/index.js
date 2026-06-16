@@ -7,7 +7,7 @@ import express from "express";
 import cors from "cors";
 import { pool, initDb } from "./db.js";
 import { encrypt, decrypt } from "./encrypt.js";
-import { hashPassword, comparePassword, signToken, requireAuth } from "./auth.js";
+import { hashPassword, comparePassword, signToken, requireAuth, requireAdmin } from "./auth.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -17,6 +17,9 @@ const RAW = process.env.CORS_ORIGIN || "https://siradj85.github.io,https://tuber
 const CORS_ORIGINS = RAW.split(",").map(s => s.trim());
 app.use(cors({ origin: CORS_ORIGINS }));
 app.use(express.json());
+
+const FREE_DAILY_LIMIT = parseInt(process.env.FREE_DAILY_LIMIT || "10", 10);
+const TRIAL_DAYS = parseInt(process.env.TRIAL_DAYS || "7", 10);
 
 /* ─── Helpers ─── */
 async function fetchJson(url) {
@@ -49,13 +52,14 @@ app.post("/api/auth/register", async (req, res) => {
     if (existing.rows.length > 0) return res.status(409).json({ error: "Email already registered" });
 
     const password_hash = await hashPassword(password);
+    const trialValue = TRIAL_DAYS > 0 ? `NOW() + ${TRIAL_DAYS}::INTERVAL` : "NULL";
     const { rows } = await pool.query(
-      "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at",
+      `INSERT INTO users (email, password_hash, trial_ends_at) VALUES ($1, $2, ${trialValue}) RETURNING id, email, plan, trial_ends_at, created_at`,
       [email, password_hash]
     );
     const user = rows[0];
     const token = signToken(user);
-    res.status(201).json({ token, user: { id: user.id, email: user.email, created_at: user.created_at } });
+    res.status(201).json({ token, user: { id: user.id, email: user.email, plan: user.plan, trial_ends_at: user.trial_ends_at, created_at: user.created_at } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -73,13 +77,22 @@ app.post("/api/auth/login", async (req, res) => {
     if (!valid) return res.status(401).json({ error: "Invalid email or password" });
 
     const token = signToken(user);
-    res.json({ token, user: { id: user.id, email: user.email, created_at: user.created_at } });
+    res.json({ token, user: { id: user.id, email: user.email, plan: user.plan, trial_ends_at: user.trial_ends_at, created_at: user.created_at } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* GET /api/auth/me */
-app.get("/api/auth/me", requireAuth, (req, res) => {
-  res.json({ user: { id: req.user.userId, email: req.user.email } });
+app.get("/api/auth/me", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT id, email, plan, trial_ends_at, created_at FROM users WHERE id = $1",
+      [req.user.userId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "User not found" });
+    const u = rows[0];
+    const isTrial = u.trial_ends_at && new Date(u.trial_ends_at) > new Date();
+    res.json({ user: { id: u.id, email: u.email, plan: u.plan, trial_ends_at: u.trial_ends_at, created_at: u.created_at } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* ─── BYOK (Authenticated) ─── */
@@ -122,6 +135,51 @@ async function resolveKey(req) {
   return key;
 }
 
+async function getEffectivePlan(userId) {
+  const { rows } = await pool.query(
+    "SELECT plan, trial_ends_at FROM users WHERE id = $1",
+    [userId]
+  );
+  if (rows.length === 0) return "free";
+  const { plan, trial_ends_at } = rows[0];
+  if (plan === "pro") return "pro";
+  if (trial_ends_at && new Date(trial_ends_at) > new Date()) return "trial";
+  return "free";
+}
+
+async function enforceLimit(req, res, next) {
+  try {
+    const plan = await getEffectivePlan(req.user.userId);
+    if (plan !== "free") return next();
+    const { rows } = await pool.query(
+      `INSERT INTO usage_daily (user_id, usage_date, count)
+       VALUES ($1, CURRENT_DATE, 1)
+       ON CONFLICT (user_id, usage_date)
+       DO UPDATE SET count = usage_daily.count + 1
+       RETURNING count`,
+      [req.user.userId]
+    );
+    if (rows[0].count > FREE_DAILY_LIMIT) {
+      return res.status(429).json({ error: "daily_limit_reached", limit: FREE_DAILY_LIMIT });
+    }
+    next();
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+}
+
+async function requirePro(req, res, next) {
+  try {
+    const plan = await getEffectivePlan(req.user.userId);
+    if (plan === "free") {
+      return res.status(403).json({ error: "pro_feature", message: "This feature is only available for Pro users" });
+    }
+    next();
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+}
+
 async function proxyToYouTube(req, res, urlBuilder, cacheKey, cacheTable) {
   try {
     if (cacheTable && cacheKey) {
@@ -151,7 +209,7 @@ async function proxyToYouTube(req, res, urlBuilder, cacheKey, cacheTable) {
 }
 
 /* GET /api/handle/:handle */
-app.get("/api/handle/:handle", requireAuth, async (req, res) => {
+app.get("/api/handle/:handle", requireAuth, enforceLimit, async (req, res) => {
   try {
     const h = req.params.handle;
     const { rows } = await pool.query(
@@ -175,7 +233,7 @@ app.get("/api/handle/:handle", requireAuth, async (req, res) => {
 });
 
 /* GET /api/channel/:id */
-app.get("/api/channel/:id", requireAuth, (req, res) => {
+app.get("/api/channel/:id", requireAuth, enforceLimit, (req, res) => {
   const id = req.params.id;
   proxyToYouTube(req, res,
     (key) => `${YT}/channels?part=snippet,statistics&id=${id}&key=${key}`,
@@ -184,13 +242,78 @@ app.get("/api/channel/:id", requireAuth, (req, res) => {
 });
 
 /* GET /api/search?q=... */
-app.get("/api/search", requireAuth, (req, res) => {
+app.get("/api/search", requireAuth, enforceLimit, requirePro, (req, res) => {
   const q = req.query.q;
   if (!q) return res.status(400).json({ error: "Missing query" });
   proxyToYouTube(req, res,
     (key) => `${YT}/search?part=snippet&q=${encodeURIComponent(q)}&type=channel&maxResults=15&key=${key}`,
     q, "search_cache"
   );
+});
+
+/* ─── Usage & Plan ─── */
+
+/* GET /api/me/usage */
+app.get("/api/me/usage", requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT plan, trial_ends_at FROM users WHERE id = $1",
+      [req.user.userId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "User not found" });
+    const { plan, trial_ends_at } = rows[0];
+    const isTrial = !!(trial_ends_at && new Date(trial_ends_at) > new Date());
+    const effectivePlan = (plan === "pro" || isTrial) ? "pro" : "free";
+    const { rows: usageRows } = await pool.query(
+      "SELECT count FROM usage_daily WHERE user_id = $1 AND usage_date = CURRENT_DATE",
+      [req.user.userId]
+    );
+    const used = usageRows.length > 0 ? usageRows[0].count : 0;
+    const limit = effectivePlan === "pro" ? null : FREE_DAILY_LIMIT;
+    const remaining = limit !== null ? Math.max(0, limit - used) : null;
+    res.json({ plan: effectivePlan, isTrial, trialEndsAt: trial_ends_at, used, limit, remaining });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ─── Admin ─── */
+
+/* GET /api/admin/users */
+app.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.id, u.email, u.plan, u.trial_ends_at, u.created_at,
+        COALESCE(d.count, 0) AS usage_today
+      FROM users u
+      LEFT JOIN usage_daily d ON d.user_id = u.id AND d.usage_date = CURRENT_DATE
+      ORDER BY u.created_at DESC
+    `);
+    res.json({ users: rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* POST /api/admin/users/:id/plan */
+app.post("/api/admin/users/:id/plan", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { plan } = req.body;
+    if (!plan || !["free", "pro"].includes(plan)) {
+      return res.status(400).json({ error: "Invalid plan. Must be 'free' or 'pro'" });
+    }
+    await pool.query("UPDATE users SET plan = $1 WHERE id = $2", [plan, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* POST /api/admin/users/:id/trial */
+app.post("/api/admin/users/:id/trial", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const days = parseInt(req.body.days || TRIAL_DAYS, 10);
+    if (days < 1) return res.status(400).json({ error: "Days must be at least 1" });
+    await pool.query(
+      "UPDATE users SET trial_ends_at = NOW() + ($1 || ' days')::INTERVAL WHERE id = $2",
+      [days, req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* ─── Password Reset ─── */

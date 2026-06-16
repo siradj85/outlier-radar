@@ -8,12 +8,24 @@ import pg from "pg";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
+const FREE_DAILY_LIMIT = 10;
+const TRIAL_DAYS = 7;
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
+  plan TEXT NOT NULL DEFAULT 'free',
+  trial_ends_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS usage_daily (
+  user_id UUID REFERENCES users(id),
+  usage_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  count INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, usage_date)
 );
 
 CREATE TABLE IF NOT EXISTS channel_cache (
@@ -57,6 +69,12 @@ DO $$ BEGIN
     ALTER TABLE user_api_keys ADD CONSTRAINT user_api_keys_user_id_key UNIQUE (user_id);
   END IF;
 END $$;
+
+-- Add plan column if missing
+ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'free';
+
+-- Add trial_ends_at column if missing
+ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ;
 `;
 
 async function initDb() {
