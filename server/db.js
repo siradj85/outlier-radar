@@ -9,7 +9,7 @@ import pg from "pg";
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
 const FREE_DAILY_LIMIT = 10;
-const TRIAL_DAYS = 7;
+const TRIAL_DAYS = 3;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -55,6 +55,11 @@ CREATE TABLE IF NOT EXISTS password_resets (
 );
 
 CREATE INDEX IF NOT EXISTS idx_password_resets_email_code ON password_resets(email, code);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `;
 
 const MIGRATIONS = `
@@ -77,9 +82,21 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'free';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ;
 `;
 
+const DEFAULT_SETTINGS = {
+  free_daily_limit: String(FREE_DAILY_LIMIT),
+  trial_days: String(TRIAL_DAYS),
+  pro_price: "9",
+};
+
 async function initDb() {
   await pool.query(SCHEMA);
   await pool.query(MIGRATIONS);
+  for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
+    await pool.query(
+      "INSERT INTO app_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING",
+      [k, v]
+    );
+  }
   console.log("DB schema ready");
 }
 

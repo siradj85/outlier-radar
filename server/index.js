@@ -18,11 +18,18 @@ const CORS_ORIGINS = RAW.split(",").map(s => s.trim());
 app.use(cors({ origin: CORS_ORIGINS }));
 app.use(express.json());
 
-const FREE_DAILY_LIMIT = parseInt(process.env.FREE_DAILY_LIMIT || "10", 10);
-const TRIAL_DAYS = parseInt(process.env.TRIAL_DAYS || "7", 10);
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "";
 
 /* ─── Helpers ─── */
+async function getSetting(key, fallback) {
+  try {
+    const { rows } = await pool.query("SELECT value FROM app_settings WHERE key = $1", [key]);
+    return rows.length > 0 ? rows[0].value : String(fallback);
+  } catch {
+    return String(fallback);
+  }
+}
+
 async function fetchJson(url) {
   const r = await fetch(url);
   const d = await r.json();
@@ -53,9 +60,8 @@ app.post("/api/auth/register", async (req, res) => {
     if (existing.rows.length > 0) return res.status(409).json({ error: "Email already registered" });
 
     const password_hash = await hashPassword(password);
-    const trialValue = TRIAL_DAYS > 0 ? `NOW() + ${TRIAL_DAYS}::INTERVAL` : "NULL";
     const { rows } = await pool.query(
-      `INSERT INTO users (email, password_hash, trial_ends_at) VALUES ($1, $2, ${trialValue}) RETURNING id, email, plan, trial_ends_at, created_at`,
+      "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, plan, trial_ends_at, created_at",
       [email, password_hash]
     );
     const user = rows[0];
@@ -152,6 +158,8 @@ async function enforceLimit(req, res, next) {
   try {
     const plan = await getEffectivePlan(req.user.userId);
     if (plan !== "free") return next();
+    const limitRaw = await getSetting("free_daily_limit", 10);
+    const limit = parseInt(limitRaw, 10);
     const { rows } = await pool.query(
       `INSERT INTO usage_daily (user_id, usage_date, count)
        VALUES ($1, CURRENT_DATE, 1)
@@ -160,8 +168,8 @@ async function enforceLimit(req, res, next) {
        RETURNING count`,
       [req.user.userId]
     );
-    if (rows[0].count > FREE_DAILY_LIMIT) {
-      return res.status(429).json({ error: "daily_limit_reached", limit: FREE_DAILY_LIMIT });
+    if (rows[0].count > limit) {
+      return res.status(429).json({ error: "daily_limit_reached", limit });
     }
     next();
   } catch (e) {
@@ -270,7 +278,8 @@ app.get("/api/me/usage", requireAuth, async (req, res) => {
       [req.user.userId]
     );
     const used = usageRows.length > 0 ? usageRows[0].count : 0;
-    const limit = effectivePlan === "pro" ? null : FREE_DAILY_LIMIT;
+    const limitRaw = await getSetting("free_daily_limit", 10);
+    const limit = effectivePlan === "pro" ? null : parseInt(limitRaw, 10);
     const remaining = limit !== null ? Math.max(0, limit - used) : null;
     res.json({ plan: effectivePlan, isTrial, trialEndsAt: trial_ends_at, used, limit, remaining });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -312,11 +321,38 @@ app.post("/api/admin/users/:id/plan", requireAuth, requireAdmin, async (req, res
 /* POST /api/admin/users/:id/trial */
 app.post("/api/admin/users/:id/trial", requireAuth, requireAdmin, async (req, res) => {
   try {
-    const days = parseInt(req.body.days || TRIAL_DAYS, 10);
+    const daysRaw = await getSetting("trial_days", 3);
+    const defaultDays = parseInt(daysRaw, 10);
+    const days = parseInt(req.body.days || defaultDays, 10);
     if (days < 1) return res.status(400).json({ error: "Days must be at least 1" });
     await pool.query(
-      "UPDATE users SET trial_ends_at = NOW() + ($1 || ' days')::INTERVAL WHERE id = $2",
+      "UPDATE users SET trial_ends_at = NOW() + make_interval(days => $1) WHERE id = $2",
       [days, req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* GET /api/admin/settings */
+app.get("/api/admin/settings", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT key, value FROM app_settings ORDER BY key");
+    const settings = {};
+    for (const r of rows) settings[r.key] = r.value;
+    res.json({ settings });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* PUT /api/admin/settings */
+app.put("/api/admin/settings", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { key, value } = req.body;
+    if (!key || value === undefined) return res.status(400).json({ error: "Missing key or value" });
+    const allowed = ["free_daily_limit", "trial_days", "pro_price"];
+    if (!allowed.includes(key)) return res.status(400).json({ error: "Invalid setting key" });
+    await pool.query(
+      "INSERT INTO app_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2",
+      [key, value]
     );
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
