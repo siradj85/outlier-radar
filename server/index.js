@@ -20,6 +20,7 @@ app.use(express.json());
 
 const FREE_DAILY_LIMIT = parseInt(process.env.FREE_DAILY_LIMIT || "10", 10);
 const TRIAL_DAYS = parseInt(process.env.TRIAL_DAYS || "7", 10);
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "";
 
 /* ─── Helpers ─── */
 async function fetchJson(url) {
@@ -276,6 +277,11 @@ app.get("/api/me/usage", requireAuth, async (req, res) => {
 });
 
 /* ─── Admin ─── */
+
+/* GET /api/admin/check */
+app.get("/api/admin/check", requireAuth, (req, res) => {
+  res.json({ isAdmin: req.user.email === ADMIN_EMAIL });
+});
 
 /* GET /api/admin/users */
 app.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
