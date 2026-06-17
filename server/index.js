@@ -296,7 +296,7 @@ app.get("/api/admin/check", requireAuth, (req, res) => {
 app.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { rows } = await pool.query(`
-      SELECT u.id, u.email, u.plan, u.trial_ends_at, u.created_at,
+      SELECT u.id, u.email, u.plan, u.trial_ends_at, u.created_at, u.synced_to_tinyemail,
         COALESCE(d.count, 0) AS usage_today
       FROM users u
       LEFT JOIN usage_daily d ON d.user_id = u.id AND d.usage_date = CURRENT_DATE
@@ -610,6 +610,7 @@ app.post("/api/admin/tinyemail/sync", requireAuth, requireAdmin, async (req, res
       const d = await r.text();
       return res.status(502).json({ error: "tinyEmail import failed", detail: d.slice(0, 300) });
     }
+    await pool.query("UPDATE users SET synced_to_tinyemail = TRUE WHERE synced_to_tinyemail = FALSE");
     res.json({ ok: true, total: rows.length, audience: AUDIENCE });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
