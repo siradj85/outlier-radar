@@ -101,6 +101,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ;
 
 -- Add PayPal subscription id if missing
 ALTER TABLE users ADD COLUMN IF NOT EXISTS paypal_subscription_id TEXT;
+
+-- Track whether a user was synced to tinyEmail
+ALTER TABLE users ADD COLUMN IF NOT EXISTS synced_to_tinyemail BOOLEAN DEFAULT FALSE;
 `;
 
 const DEFAULT_AFFILIATE_TOOLS = [
