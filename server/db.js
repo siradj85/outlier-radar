@@ -104,6 +104,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS paypal_subscription_id TEXT;
 
 -- Track whether a user was synced to tinyEmail
 ALTER TABLE users ADD COLUMN IF NOT EXISTS synced_to_tinyemail BOOLEAN DEFAULT FALSE;
+
+-- Track whether the welcome email was sent
+ALTER TABLE users ADD COLUMN IF NOT EXISTS welcome_sent BOOLEAN DEFAULT FALSE;
 `;
 
 const DEFAULT_AFFILIATE_TOOLS = [
@@ -144,6 +147,20 @@ const DEFAULT_SETTINGS = {
   logo_url: "",
   marketing_head: "",
   ads: "[]",
+  welcome_enabled: "true",
+  welcome_delay_hours: "2",
+  welcome_subject: "Welcome to TubeRanke 🎯 | مرحباً بك في TubeRanke",
+  welcome_body: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;color:#222">
+<h2>🎯 Welcome to TubeRanke!</h2>
+<p>Thanks for joining! TubeRanke helps you discover winning YouTube niches before you start — with real data: true niche age, pivot detection, viral ratio & more.</p>
+<p>👉 Start analyzing now: <a href="https://tuberanke.com/app">tuberanke.com/app</a></p>
+<p>Want keyword search, ready-made discovered niches, saved reports & no ads? <a href="https://tuberanke.com/pricing">Upgrade to Pro</a>.</p>
+<hr>
+<h3>مرحباً بك في TubeRanke!</h3>
+<p>شكراً لانضمامك! TubeRanke يساعدك على اكتشاف نتشات يوتيوب الرابحة قبل أن تبدأ — بالأرقام: العمر الحقيقي للنتش، كشف تغيير المسار، معامل الانتشار وغيرها.</p>
+<p>👈 ابدأ التحليل الآن: <a href="https://tuberanke.com/app">tuberanke.com/app</a></p>
+<p>تريد بحث الكلمات، النتشات المكتشفة الجاهزة، التقارير المحفوظة، وبلا إعلانات؟ <a href="https://tuberanke.com/pricing">رقِّ إلى Pro</a>.</p>
+</div>`,
   affiliate_tools: JSON.stringify(DEFAULT_AFFILIATE_TOOLS),
   discoveries: JSON.stringify(DEFAULT_DISCOVERIES),
 };

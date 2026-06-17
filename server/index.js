@@ -372,7 +372,7 @@ app.put("/api/admin/settings", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { key, value } = req.body;
     if (!key || value === undefined) return res.status(400).json({ error: "Missing key or value" });
-    const allowed = ["free_daily_limit", "trial_days", "pro_price", "adsense_client", "adsense_slot", "ads_enabled", "contact_email", "affiliate_tools", "ga_measurement_id", "logo_url", "marketing_head", "page_terms_en", "page_terms_ar", "page_privacy_en", "page_privacy_ar", "page_refund_en", "page_refund_ar", "landing_hero_en", "landing_hero_ar", "footer_text_en", "footer_text_ar", "social_links", "trusted_logos", "testimonials", "faqs", "discoveries", "ads"];
+    const allowed = ["free_daily_limit", "trial_days", "pro_price", "adsense_client", "adsense_slot", "ads_enabled", "contact_email", "affiliate_tools", "ga_measurement_id", "logo_url", "marketing_head", "page_terms_en", "page_terms_ar", "page_privacy_en", "page_privacy_ar", "page_refund_en", "page_refund_ar", "landing_hero_en", "landing_hero_ar", "footer_text_en", "footer_text_ar", "social_links", "trusted_logos", "testimonials", "faqs", "discoveries", "ads", "welcome_enabled", "welcome_delay_hours", "welcome_subject", "welcome_body"];
     if (!allowed.includes(key)) return res.status(400).json({ error: "Invalid setting key" });
     await pool.query(
       "INSERT INTO app_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2",
@@ -584,34 +584,65 @@ app.post("/api/paypal/webhook", async (req, res) => {
   } catch (e) { res.sendStatus(200); }
 });
 
-/* ─── tinyEmail sync ─── */
+/* ─── tinyEmail sync + welcome emails + cron ─── */
 const TINYEMAIL_API_KEY = process.env.TINYEMAIL_API_KEY || "";
+const CRON_SECRET = process.env.CRON_SECRET || "";
+
+async function doTinyEmailSync() {
+  if (!TINYEMAIL_API_KEY) return { ok: false, error: "tinyEmail API key not configured" };
+  const headers = { "X-API-KEY": TINYEMAIL_API_KEY, "Content-Type": "application/json", "Accept": "application/json" };
+  const AUDIENCE = "TubeRanke";
+  const { rows } = await pool.query("SELECT email FROM users ORDER BY created_at");
+  if (rows.length === 0) return { ok: true, total: 0 };
+  const members = rows.map(r => ({ email: r.email }));
+  try {
+    const listRes = await fetch("https://api.tinyemail.com/v1/audiences", { headers });
+    const listData = await listRes.json();
+    const existing = (listData.contacts || []).find(a => a.name === AUDIENCE);
+    if (existing) await fetch(`https://api.tinyemail.com/v1/audiences/${existing.id}`, { method: "DELETE", headers });
+  } catch {}
+  const r = await fetch("https://api.tinyemail.com/v1/audiences", {
+    method: "POST", headers, body: JSON.stringify({ name: AUDIENCE, members }),
+  });
+  if (!r.ok) { const d = await r.text(); return { ok: false, error: d.slice(0, 300) }; }
+  await pool.query("UPDATE users SET synced_to_tinyemail = TRUE WHERE synced_to_tinyemail = FALSE");
+  return { ok: true, total: rows.length };
+}
+
+async function sendWelcomeEmails() {
+  const enabled = (await getSetting("welcome_enabled", "true")) !== "false";
+  if (!enabled) return 0;
+  const hours = parseInt(await getSetting("welcome_delay_hours", "2"), 10) || 2;
+  const subject = await getSetting("welcome_subject", "Welcome to TubeRanke");
+  const body = await getSetting("welcome_body", "<p>Welcome to TubeRanke!</p>");
+  const { rows } = await pool.query(
+    "SELECT id, email FROM users WHERE welcome_sent = FALSE AND created_at <= NOW() - make_interval(hours => $1)",
+    [hours]
+  );
+  let sent = 0;
+  for (const u of rows) {
+    try {
+      await sendEmail(u.email, subject, "", body);
+      await pool.query("UPDATE users SET welcome_sent = TRUE WHERE id = $1", [u.id]);
+      sent++;
+    } catch (e) { console.error("welcome email error:", e.message); }
+  }
+  return sent;
+}
 
 app.post("/api/admin/tinyemail/sync", requireAuth, requireAdmin, async (req, res) => {
+  const r = await doTinyEmailSync();
+  if (!r.ok) return res.status(502).json({ error: "tinyEmail import failed", detail: r.error });
+  res.json({ ok: true, total: r.total ?? 0, audience: "TubeRanke" });
+});
+
+/* Cron endpoint — protected by a secret token. Runs sync + welcome emails. */
+app.get("/api/cron/run", async (req, res) => {
+  if (!CRON_SECRET || req.query.token !== CRON_SECRET) return res.status(403).json({ error: "forbidden" });
   try {
-    if (!TINYEMAIL_API_KEY) return res.status(400).json({ error: "tinyEmail API key not configured" });
-    const headers = { "X-API-KEY": TINYEMAIL_API_KEY, "Content-Type": "application/json", "Accept": "application/json" };
-    const AUDIENCE = "TubeRanke";
-    const { rows } = await pool.query("SELECT email FROM users ORDER BY created_at");
-    if (rows.length === 0) return res.json({ ok: true, total: 0 });
-    const members = rows.map(r => ({ email: r.email }));
-    // Find & delete the existing "TubeRanke" audience so we can refresh it (tinyEmail rejects duplicate names)
-    try {
-      const listRes = await fetch("https://api.tinyemail.com/v1/audiences", { headers });
-      const listData = await listRes.json();
-      const existing = (listData.contacts || []).find(a => a.name === AUDIENCE);
-      if (existing) await fetch(`https://api.tinyemail.com/v1/audiences/${existing.id}`, { method: "DELETE", headers });
-    } catch {}
-    // (Re)create the single "TubeRanke" audience with all registrants
-    const r = await fetch("https://api.tinyemail.com/v1/audiences", {
-      method: "POST", headers, body: JSON.stringify({ name: AUDIENCE, members }),
-    });
-    if (!r.ok) {
-      const d = await r.text();
-      return res.status(502).json({ error: "tinyEmail import failed", detail: d.slice(0, 300) });
-    }
-    await pool.query("UPDATE users SET synced_to_tinyemail = TRUE WHERE synced_to_tinyemail = FALSE");
-    res.json({ ok: true, total: rows.length, audience: AUDIENCE });
+    const sync = await doTinyEmailSync();
+    const welcomed = await sendWelcomeEmails();
+    res.json({ ok: true, synced: sync.total ?? 0, welcomed });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -631,19 +662,20 @@ function generateCode() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
 
-async function sendEmail(to, subject, text) {
+async function sendEmail(to, subject, text, html) {
   // Preferred: Brevo HTTP API (Render blocks outbound SMTP ports, but HTTPS/443 always works)
   if (BREVO_API_KEY) {
     try {
+      const payload = {
+        sender: { name: BREVO_SENDER_NAME, email: BREVO_SENDER_EMAIL },
+        to: [{ email: to }],
+        subject,
+      };
+      if (html) payload.htmlContent = html; else payload.textContent = text;
       const r = await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
         headers: { "api-key": BREVO_API_KEY, "Content-Type": "application/json", "accept": "application/json" },
-        body: JSON.stringify({
-          sender: { name: BREVO_SENDER_NAME, email: BREVO_SENDER_EMAIL },
-          to: [{ email: to }],
-          subject,
-          textContent: text,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!r.ok) {
         const d = await r.text();
