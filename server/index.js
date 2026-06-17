@@ -590,21 +590,27 @@ const TINYEMAIL_API_KEY = process.env.TINYEMAIL_API_KEY || "";
 app.post("/api/admin/tinyemail/sync", requireAuth, requireAdmin, async (req, res) => {
   try {
     if (!TINYEMAIL_API_KEY) return res.status(400).json({ error: "tinyEmail API key not configured" });
-    const { rows } = await pool.query("SELECT email FROM users WHERE synced_to_tinyemail = FALSE");
-    if (rows.length === 0) return res.json({ ok: true, synced: 0 });
+    const headers = { "X-API-KEY": TINYEMAIL_API_KEY, "Content-Type": "application/json", "Accept": "application/json" };
+    const AUDIENCE = "TubeRanke";
+    const { rows } = await pool.query("SELECT email FROM users ORDER BY created_at");
+    if (rows.length === 0) return res.json({ ok: true, total: 0 });
     const members = rows.map(r => ({ email: r.email }));
-    const name = `TubeRanke ${new Date().toISOString().slice(0, 16).replace("T", " ")}`;
+    // Find & delete the existing "TubeRanke" audience so we can refresh it (tinyEmail rejects duplicate names)
+    try {
+      const listRes = await fetch("https://api.tinyemail.com/v1/audiences", { headers });
+      const listData = await listRes.json();
+      const existing = (listData.contacts || []).find(a => a.name === AUDIENCE);
+      if (existing) await fetch(`https://api.tinyemail.com/v1/audiences/${existing.id}`, { method: "DELETE", headers });
+    } catch {}
+    // (Re)create the single "TubeRanke" audience with all registrants
     const r = await fetch("https://api.tinyemail.com/v1/audiences", {
-      method: "POST",
-      headers: { "X-API-KEY": TINYEMAIL_API_KEY, "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify({ name, members }),
+      method: "POST", headers, body: JSON.stringify({ name: AUDIENCE, members }),
     });
     if (!r.ok) {
       const d = await r.text();
       return res.status(502).json({ error: "tinyEmail import failed", detail: d.slice(0, 300) });
     }
-    await pool.query("UPDATE users SET synced_to_tinyemail = TRUE WHERE synced_to_tinyemail = FALSE");
-    res.json({ ok: true, synced: rows.length, audience: name });
+    res.json({ ok: true, total: rows.length, audience: AUDIENCE });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
