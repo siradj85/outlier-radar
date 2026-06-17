@@ -592,12 +592,38 @@ const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587", 10);
 const SMTP_USER = process.env.SMTP_USER || "";
 const SMTP_PASS = process.env.SMTP_PASS || "";
 const SMTP_FROM = process.env.SMTP_FROM || "noreply@tuberanke.com";
+const BREVO_API_KEY = process.env.BREVO_API_KEY || "";
+const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || SMTP_USER || "noreply@tuberanke.com";
+const BREVO_SENDER_NAME = process.env.BREVO_SENDER_NAME || "TubeRanke";
 
 function generateCode() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
 
 async function sendEmail(to, subject, text) {
+  // Preferred: Brevo HTTP API (Render blocks outbound SMTP ports, but HTTPS/443 always works)
+  if (BREVO_API_KEY) {
+    try {
+      const r = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: { "api-key": BREVO_API_KEY, "Content-Type": "application/json", "accept": "application/json" },
+        body: JSON.stringify({
+          sender: { name: BREVO_SENDER_NAME, email: BREVO_SENDER_EMAIL },
+          to: [{ email: to }],
+          subject,
+          textContent: text,
+        }),
+      });
+      if (!r.ok) {
+        const d = await r.text();
+        console.error("Brevo send failed:", r.status, d.slice(0, 300));
+      } else {
+        console.log(`Reset email sent via Brevo to ${to}`);
+      }
+    } catch (e) { console.error("Brevo error:", e.message); }
+    return;
+  }
+  // Fallback: SMTP (works only where SMTP ports are open)
   if (!SMTP_HOST || !SMTP_USER) {
     console.log(`[DEV] Password reset email to ${to}: ${subject} — ${text}`);
     return;
