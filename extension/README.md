@@ -5,6 +5,7 @@ A Chrome + Firefox extension for **tuberanke.com**. Three features:
 | # | Feature | Where | Backend endpoint |
 |---|---------|-------|------------------|
 | **OUTLIER BADGES** | A badge on **every thumbnail** while you browse: true outlier multiplier (vs channel median) on channel pages, views-per-hour momentum everywhere else. 100% client-side - zero API quota. Works logged-out. | Home, Search, any channel page | none (DOM math) |
+| **SORT BY OUTLIER** | On a channel page, a floating "Sort by Outlier" button reorders the video grid so the biggest outliers come first. Toggle back to original order. | Any channel /videos page | none (DOM math) |
 | A | Channel stats + **Outlier score** overlay | Floating panel on any YouTube channel/video page | `/api/handle/:h`, `/api/channel/:id` |
 | B | **Save idea / channel to TubeRanke** | Click any badge, or the overlay button | `POST /api/reports` (Pro) |
 | C | **Niche Search + Discoveries** | The toolbar popup | `/api/search` (Pro), `/api/discoveries` (Pro) |

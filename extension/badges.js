@@ -158,6 +158,9 @@
         data = { ...d, metricLabel: "vph", metricValue: vph };
       }
 
+      // store the metric so we can sort the grid by it
+      el.setAttribute("data-tr-metric", String(data.metricValue));
+
       // remove any previous badge (mode switched)
       el.querySelectorAll("." + BADGE).forEach((x) => x.remove());
       const host = thumbHost(el);
@@ -165,6 +168,48 @@
       host.appendChild(makeBadge(label, sub, cls, data));
       el.setAttribute(DONE, channelMode ? "ch" : "vph");
     });
+
+    if (channelMode) ensureSortButton();
+  }
+
+  /* ---- sort the channel grid by our outlier metric ---- */
+  let sortBtn, sorted = false;
+  function ensureSortButton() {
+    if (sortBtn && document.body.contains(sortBtn)) return;
+    sortBtn = document.createElement("button");
+    sortBtn.id = "tr-sort-btn";
+    sortBtn.textContent = "Sort by Outlier";
+    sortBtn.addEventListener("click", toggleSort);
+    document.body.appendChild(sortBtn);
+  }
+
+  function gridContainer() {
+    const first = document.querySelector("ytd-rich-item-renderer, ytd-grid-video-renderer");
+    return first ? first.parentElement : null;
+  }
+
+  function toggleSort() {
+    const container = gridContainer();
+    if (!container) return;
+    const items = Array.from(container.children).filter(
+      (c) => c.matches && c.matches("ytd-rich-item-renderer, ytd-grid-video-renderer")
+    );
+    if (!sorted) {
+      // remember original order once
+      items.forEach((el, i) => { if (!el.hasAttribute("data-tr-ord")) el.setAttribute("data-tr-ord", String(i)); });
+      const withMetric = items.filter((el) => el.hasAttribute("data-tr-metric"));
+      withMetric.sort((a, b) => parseFloat(b.getAttribute("data-tr-metric")) - parseFloat(a.getAttribute("data-tr-metric")));
+      withMetric.forEach((el) => container.appendChild(el));
+      sortBtn.textContent = "Original order";
+      sortBtn.classList.add("tr-active");
+      sorted = true;
+    } else {
+      items.sort((a, b) => parseInt(a.getAttribute("data-tr-ord") || "0") - parseInt(b.getAttribute("data-tr-ord") || "0"));
+      items.forEach((el) => container.appendChild(el));
+      sortBtn.textContent = "Sort by Outlier";
+      sortBtn.classList.remove("tr-active");
+      sorted = false;
+    }
   }
 
   // throttled observer
@@ -179,6 +224,8 @@
   obs.observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener("yt-navigate-finish", () => {
     document.querySelectorAll("[" + DONE + "]").forEach((el) => el.removeAttribute(DONE));
+    sorted = false;
+    if (sortBtn) { sortBtn.remove(); sortBtn = null; }
     setTimeout(scan, 600);
   });
   window.addEventListener("scroll", schedule, { passive: true });
