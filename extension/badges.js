@@ -210,6 +210,10 @@
       sortBtn.classList.remove("tr-active");
       sorted = false;
     }
+    // reordering makes YouTube re-render thumbnails and drop our badges -> redraw them
+    document.querySelectorAll("[" + DONE + "]").forEach((el) => el.removeAttribute(DONE));
+    setTimeout(scan, 150);
+    setTimeout(scan, 600);
   }
 
   // throttled observer
