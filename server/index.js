@@ -260,6 +260,61 @@ app.get("/api/search", requireAuth, enforceLimit, requirePro, (req, res) => {
   );
 });
 
+/* GET /api/discover?q=niche - auto-discover rising outlier videos in a niche.
+   Finds recent most-viewed videos for the niche, then scores each by
+   views / channel-subscribers (a small channel with big views = a rising
+   outlier worth copying). Sorted by that ratio. */
+app.get("/api/discover", requireAuth, enforceLimit, requirePro, async (req, res) => {
+  try {
+    const q = req.query.q;
+    if (!q) return res.status(400).json({ error: "Missing query" });
+    const apiKey = await resolveKey(req);
+    if (!apiKey) return res.status(400).json({ error: "No API key available. Set your key first." });
+
+    const since = new Date(Date.now() - 1000 * 60 * 60 * 24 * 90).toISOString();
+    const search = await fetchJson(
+      `${YT}/search?part=snippet&q=${encodeURIComponent(q)}&type=video&order=viewCount&publishedAfter=${since}&maxResults=25&key=${apiKey}`
+    );
+    const items = search.items || [];
+    const videoIds = items.map((i) => i.id && i.id.videoId).filter(Boolean);
+    const channelIds = [...new Set(items.map((i) => i.snippet && i.snippet.channelId).filter(Boolean))];
+    if (!videoIds.length) return res.json({ discoveries: [] });
+
+    const vstats = await fetchJson(`${YT}/videos?part=statistics,snippet&id=${videoIds.join(",")}&key=${apiKey}`);
+    const vmap = {};
+    (vstats.items || []).forEach((v) => { vmap[v.id] = v; });
+
+    const cstats = await fetchJson(`${YT}/channels?part=statistics,snippet&id=${channelIds.join(",")}&key=${apiKey}`);
+    const cmap = {};
+    (cstats.items || []).forEach((c) => { cmap[c.id] = c; });
+
+    const out = [];
+    for (const vid of videoIds) {
+      const v = vmap[vid];
+      if (!v) continue;
+      const views = Number(v.statistics && v.statistics.viewCount) || 0;
+      const chId = v.snippet && v.snippet.channelId;
+      const c = cmap[chId];
+      const subs = Number(c && c.statistics && c.statistics.subscriberCount) || 0;
+      const ratio = subs > 0 ? views / subs : views;
+      out.push({
+        title: v.snippet && v.snippet.title,
+        videoId: vid,
+        url: "https://www.youtube.com/watch?v=" + vid,
+        channel: (c && c.snippet && c.snippet.title) || (v.snippet && v.snippet.channelTitle),
+        channelId: chId,
+        views: views,
+        subs: subs,
+        outlier: Math.round(ratio * 10) / 10,
+        publishedAt: v.snippet && v.snippet.publishedAt,
+        thumb: v.snippet && v.snippet.thumbnails && (v.snippet.thumbnails.medium || v.snippet.thumbnails.default || {}).url,
+      });
+    }
+    out.sort((a, b) => b.outlier - a.outlier);
+    res.json({ discoveries: out.slice(0, 15) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* ─── Usage & Plan ─── */
 
 /* GET /api/me/usage */

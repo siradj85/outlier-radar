@@ -43,8 +43,13 @@
       <div id="searchResults" class="results"></div>
     </div>
 
-    <!-- Discoveries -->
+    <!-- Discoveries (auto-discover rising outliers in a niche) -->
     <div id="tab-discover" class="tabpane" hidden>
+      <div class="searchrow">
+        <input id="dq" type="text" placeholder="niche, e.g. ai tools, personal finance" />
+        <button id="discoverBtn" class="btn primary small">Find</button>
+      </div>
+      <div class="hintline">Finds recent videos where a small channel got big views (rising outliers).</div>
       <div id="discoverResults" class="results"></div>
     </div>
   </div>

@@ -58,3 +58,13 @@ input:focus { outline: none; border-color: #e23b35; }
 .upsell { background: rgba(226,59,53,.12); border: 1px solid rgba(226,59,53,.3);
   border-radius: 10px; padding: 12px; color: #ff9a95; font-size: 12px; }
 .upsell a { color: #fff; font-weight: 600; }
+.hintline { font-size: 11px; color: #9aa0a6; margin-bottom: 10px; }
+.card img.thumb { width: 88px; height: 50px; border-radius: 7px; object-fit: cover; flex-shrink: 0; }
+.card .grow { flex: 1; min-width: 0; }
+.metarow { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+.pill { font-weight: 800; font-size: 12px; color: #fff; padding: 2px 8px; border-radius: 20px; }
+.pill.b-viral { background: #b3001b; }
+.pill.b-hot { background: #e23b35; }
+.pill.b-good { background: #1f9d55; }
+.pill.b-mid { background: #41454d; }
+.views { font-size: 11px; color: #9aa0a6; }

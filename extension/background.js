@@ -82,6 +82,10 @@ const handlers = {
     const d = await request("GET", "/api/discoveries");
     return d.discoveries || [];
   },
+  async discover({ q }) {
+    const d = await request("GET", "/api/discover?q=" + encodeURIComponent(q));
+    return d.discoveries || [];
+  },
   async saveReport({ title, data }) {
     return request("POST", "/api/reports", { title, data });
   },

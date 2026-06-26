@@ -31,6 +31,7 @@
     channelById: (id) => send({ type: "channelById", id }),
     search: (q) => send({ type: "search", q }),
     discoveries: () => send({ type: "discoveries" }),
+    discover: (q) => send({ type: "discover", q }),
 
     // feature B
     saveReport: (title, data) => send({ type: "saveReport", title, data }),

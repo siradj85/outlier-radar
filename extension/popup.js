@@ -76,7 +76,6 @@ document.querySelectorAll(".tab").forEach((t) => {
     const tab = t.dataset.tab;
     $("tab-search").hidden = tab !== "search";
     $("tab-discover").hidden = tab !== "discover";
-    if (tab === "discover" && !$("discoverResults").dataset.loaded) loadDiscoveries();
   });
 });
 
@@ -120,28 +119,43 @@ async function doSearch() {
 $("searchBtn").addEventListener("click", doSearch);
 $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
 
-/* ---------- discoveries (feature C) ---------- */
-function discoveryCard(d) {
-  const title = d.title || d.niche || d.name || "Discovery";
-  const desc = d.description || d.note || d.reason || "";
-  const url = d.url || d.link || "";
-  const inner = `
-    <div>
-      <div class="c-title">${esc(title)}</div>
-      <div class="c-desc">${esc(desc)}</div>
+/* ---------- discoveries: auto-discover rising outliers (feature C) ---------- */
+const fmt = (n) => {
+  n = Number(n) || 0;
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "K";
+  return String(Math.round(n));
+};
+
+function outlierCard(d) {
+  const mult = d.outlier || 0;
+  const cls = mult >= 5 ? "b-viral" : mult >= 2 ? "b-hot" : mult >= 1 ? "b-good" : "b-mid";
+  return `
+    <div class="card">
+      <a href="${esc(d.url)}" target="_blank">
+        ${d.thumb ? `<img class="thumb" src="${esc(d.thumb)}" alt="">` : ""}
+        <div class="grow">
+          <div class="c-title">${esc(d.title || "")}</div>
+          <div class="c-desc">${esc(d.channel || "")} &middot; ${fmt(d.subs)} subs</div>
+          <div class="metarow">
+            <span class="pill ${cls}">${mult.toFixed(1)}x</span>
+            <span class="views">${fmt(d.views)} views</span>
+          </div>
+        </div>
+      </a>
     </div>`;
-  return `<div class="card">${url ? `<a href="${esc(url)}" target="_blank">${inner}</a>` : inner}</div>`;
 }
 
-async function loadDiscoveries() {
+async function doDiscover() {
+  const q = $("dq").value.trim();
+  if (!q) return;
   const box = $("discoverResults");
-  box.innerHTML = `<div class="muted">Loading discoveries...</div>`;
+  box.innerHTML = `<div class="muted">Scanning the niche for rising outliers...</div>`;
   try {
-    const list = await send({ type: "discoveries" });
-    box.dataset.loaded = "1";
+    const list = await send({ type: "discover", q });
     box.innerHTML = list.length
-      ? list.map(discoveryCard).join("")
-      : `<div class="muted">No discoveries yet. Check back soon.</div>`;
+      ? list.map(outlierCard).join("")
+      : `<div class="muted">No rising outliers found for this niche.</div>`;
   } catch (e) {
     if (/pro_feature|Pro users/i.test(e.message)) {
       box.innerHTML = `<div class="upsell">Discoveries are a Pro feature.
@@ -151,5 +165,7 @@ async function loadDiscoveries() {
     }
   }
 }
+$("discoverBtn").addEventListener("click", doDiscover);
+$("dq").addEventListener("keydown", (e) => { if (e.key === "Enter") doDiscover(); });
 
 init();
