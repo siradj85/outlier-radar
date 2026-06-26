@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>TubeRanke</title>
+</head>
+<body>
+  <div class="head">
+    <span class="logo">TubeRanke</span>
+    <span class="plan" id="plan"></span>
+  </div>
+
+  <!-- Logged-out view -->
+  <div id="view-login" class="view">
+    <div class="sub">Log in with your TubeRanke account</div>
+    <input id="email" type="email" placeholder="Email" autocomplete="username" />
+    <input id="password" type="password" placeholder="Password" autocomplete="current-password" />
+    <button id="loginBtn" class="btn primary">Log in</button>
+    <div id="loginErr" class="err"></div>
+    <a class="link" href="https://tuberanke.com" target="_blank">No account? Sign up on tuberanke.com</a>
+  </div>
+
+  <!-- Logged-in view -->
+  <div id="view-main" class="view" hidden>
+    <div class="userbar">
+      <span id="userEmail" class="email"></span>
+      <button id="logoutBtn" class="btn ghost small">Log out</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="search">Niche Search</button>
+      <button class="tab" data-tab="discover">Discoveries</button>
+    </div>
+
+    <!-- Niche search -->
+    <div id="tab-search" class="tabpane">
+      <div class="searchrow">
+        <input id="q" type="text" placeholder="e.g. personal finance, faceless..." />
+        <button id="searchBtn" class="btn primary small">Find</button>
+      </div>
+      <div id="searchResults" class="results"></div>
+    </div>
+
+    <!-- Discoveries -->
+    <div id="tab-discover" class="tabpane" hidden>
+      <div id="discoverResults" class="results"></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <a href="https://tuberanke.com" target="_blank">tuberanke.com</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

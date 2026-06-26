@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "TubeRanke - YouTube Niche & Outlier Finder",
+  "version": "1.0.0",
+  "description": "Analyze any YouTube channel, spot outlier videos, and discover profitable niches - powered by TubeRanke.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://niche-radar-api.onrender.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "TubeRanke",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["lib/parse.js", "lib/api.js", "content.js", "badges.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "tuberanke@tuberanke.com",
+      "strict_min_version": "115.0"
+    }
+  }
+}
