@@ -169,51 +169,53 @@
       el.setAttribute(DONE, channelMode ? "ch" : "vph");
     });
 
-    if (channelMode) ensureSortButton();
+    if (channelMode) {
+      ensureSortButton();
+      if (sorted) applySortOrder(); // keep newly-loaded items in sorted position
+    }
   }
 
-  /* ---- sort the channel grid by our outlier metric ---- */
+  /* ---- sort the channel grid by our outlier metric ----
+     Uses CSS `order` on the flex #contents grid instead of moving nodes:
+     YouTube's framework reverts DOM reordering, but it leaves CSS order
+     alone, and not moving nodes means our badges are never wiped. */
+  const ALL_ITEMS = "ytd-rich-item-renderer, ytd-grid-video-renderer";
   let sortBtn, sorted = false;
+
   function ensureSortButton() {
     if (sortBtn && document.body.contains(sortBtn)) return;
     sortBtn = document.createElement("button");
     sortBtn.id = "tr-sort-btn";
-    sortBtn.textContent = "Sort by Outlier";
+    sortBtn.textContent = sorted ? "Original order" : "Sort by Outlier";
+    if (sorted) sortBtn.classList.add("tr-active");
     sortBtn.addEventListener("click", toggleSort);
     document.body.appendChild(sortBtn);
   }
 
-  function gridContainer() {
-    const first = document.querySelector("ytd-rich-item-renderer, ytd-grid-video-renderer");
-    return first ? first.parentElement : null;
+  function applySortOrder() {
+    const items = Array.from(document.querySelectorAll(ALL_ITEMS));
+    const withMetric = items.filter((el) => el.hasAttribute("data-tr-metric"));
+    withMetric.sort((a, b) => parseFloat(b.getAttribute("data-tr-metric")) - parseFloat(a.getAttribute("data-tr-metric")));
+    withMetric.forEach((el, i) => { el.style.order = String(i); });
+    items.filter((el) => !el.hasAttribute("data-tr-metric")).forEach((el) => { el.style.order = "9999"; });
+  }
+
+  function clearSortOrder() {
+    document.querySelectorAll(ALL_ITEMS).forEach((el) => { el.style.order = ""; });
   }
 
   function toggleSort() {
-    const container = gridContainer();
-    if (!container) return;
-    const items = Array.from(container.children).filter(
-      (c) => c.matches && c.matches("ytd-rich-item-renderer, ytd-grid-video-renderer")
-    );
     if (!sorted) {
-      // remember original order once
-      items.forEach((el, i) => { if (!el.hasAttribute("data-tr-ord")) el.setAttribute("data-tr-ord", String(i)); });
-      const withMetric = items.filter((el) => el.hasAttribute("data-tr-metric"));
-      withMetric.sort((a, b) => parseFloat(b.getAttribute("data-tr-metric")) - parseFloat(a.getAttribute("data-tr-metric")));
-      withMetric.forEach((el) => container.appendChild(el));
+      sorted = true;
+      applySortOrder();
       sortBtn.textContent = "Original order";
       sortBtn.classList.add("tr-active");
-      sorted = true;
     } else {
-      items.sort((a, b) => parseInt(a.getAttribute("data-tr-ord") || "0") - parseInt(b.getAttribute("data-tr-ord") || "0"));
-      items.forEach((el) => container.appendChild(el));
+      sorted = false;
+      clearSortOrder();
       sortBtn.textContent = "Sort by Outlier";
       sortBtn.classList.remove("tr-active");
-      sorted = false;
     }
-    // reordering makes YouTube re-render thumbnails and drop our badges -> redraw them
-    document.querySelectorAll("[" + DONE + "]").forEach((el) => el.removeAttribute(DONE));
-    setTimeout(scan, 150);
-    setTimeout(scan, 600);
   }
 
   // throttled observer
