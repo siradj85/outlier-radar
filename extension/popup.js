@@ -24,6 +24,12 @@ function showLogin() {
   $("view-main").hidden = true;
   $("plan").textContent = "";
 }
+function showRetry() {
+  $("view-login").hidden = false;
+  $("view-main").hidden = true;
+  $("plan").textContent = "";
+  $("loginErr").textContent = "Server is waking up. Please wait a moment and re-open this popup.";
+}
 async function showMain(user) {
   $("view-login").hidden = true;
   $("view-main").hidden = false;
@@ -50,7 +56,9 @@ async function showMain(user) {
       }
     }
   } catch {
-    usageEl.hidden = true;
+    planLabel.textContent = "Unlimited";
+    usageEl.hidden = false;
+    upgradeBtn.hidden = true;
   }
 }
 
@@ -61,8 +69,13 @@ async function init() {
     if (!token) return showLogin();
     const user = await send({ type: "me" });
     showMain(user);
-  } catch {
-    showLogin();
+  } catch (e) {
+    const token = await send({ type: "getToken" }).catch(() => null);
+    if (token) {
+      showRetry();
+    } else {
+      showLogin();
+    }
   }
 }
 

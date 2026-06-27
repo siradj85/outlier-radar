@@ -12,21 +12,35 @@
   const API = window.TubeRankeAPI;
   const BADGE = "tr-badge";
   const DONE = "data-tr-done";
-  const PLAN_KEY = "tuberanke-plan";
 
   /* ---- plan state ---- */
-  let currentPlan = 'logged-out'; // 'logged-out' | 'free' | 'trial' | 'pro'
+  let currentPlan = 'logged-out';
+  let planLoaded = false;
 
   async function fetchPlan() {
     try {
       const token = await API.getToken();
-      if (!token) { currentPlan = 'logged-out'; return; }
+      if (!token) { currentPlan = 'logged-out'; planLoaded = true; return; }
+      const cached = await API.getUser();
+      if (cached && cached.plan) {
+        currentPlan = resolvePlan(cached);
+        planLoaded = true;
+        return;
+      }
       const user = await API.me();
-      const p = user.plan || 'free';
-      if (p === 'pro') { currentPlan = 'pro'; return; }
-      if (user.trial_ends_at && new Date(user.trial_ends_at) > new Date()) { currentPlan = 'trial'; return; }
-      currentPlan = 'free';
-    } catch { currentPlan = 'logged-out'; }
+      currentPlan = resolvePlan(user);
+    } catch {
+      if (!planLoaded) currentPlan = 'logged-out';
+    } finally {
+      planLoaded = true;
+    }
+  }
+
+  function resolvePlan(user) {
+    const p = user.plan || 'free';
+    if (p === 'pro') return 'pro';
+    if (user.trial_ends_at && new Date(user.trial_ends_at) > new Date()) return 'trial';
+    return 'free';
   }
 
   const isPro = () => currentPlan === 'pro' || currentPlan === 'trial';
@@ -138,7 +152,7 @@
     toastEl._t = setTimeout(() => toastEl.classList.remove("show"), 2200);
   }
 
-  /* ---- channel-page baseline (median of currently visible videos) ---- */
+  /* ---- channel-page baseline ---- */
   let channelMedian = null;
   function recomputeChannelMedian(items) {
     const counts = [];
@@ -150,6 +164,8 @@
   }
 
   function scan() {
+    if (!planLoaded) return;
+
     const items = Array.from(document.querySelectorAll(ITEM_SELECTORS));
     if (!items.length) return;
     const channelMode = isChannelPage();
@@ -209,7 +225,7 @@
     }
   }
 
-  /* ---- sort the channel grid by our outlier metric ---- */
+  /* ---- sort ---- */
   const ALL_ITEMS = "ytd-rich-item-renderer, ytd-grid-video-renderer";
   let sortBtn, sorted = false;
 
@@ -251,6 +267,7 @@
 
   let pending = false;
   function schedule() {
+    if (!planLoaded) return;
     if (pending) return;
     pending = true;
     setTimeout(() => { pending = false; try { scan(); } catch (e) {} }, 400);
@@ -260,10 +277,10 @@
   obs.observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener("yt-navigate-finish", () => {
     document.querySelectorAll("[" + DONE + "]").forEach((el) => el.removeAttribute(DONE));
-    sorted = false;
+    sorted = false; planLoaded = false;
     if (sortBtn) { sortBtn.remove(); sortBtn = null; }
     fetchPlan().then(() => setTimeout(scan, 600));
   });
   window.addEventListener("scroll", schedule, { passive: true });
-  setTimeout(async () => { await fetchPlan(); scan(); }, 1000);
+  setTimeout(async () => { await fetchPlan(); scan(); }, 200);
 })();
