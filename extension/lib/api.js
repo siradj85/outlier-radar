@@ -4,7 +4,8 @@
    so routing every call through the background avoids CORS entirely.
    This file attaches a global `TubeRankeAPI`. */
 (function (root) {
-  const ext = typeof browser !== "undefined" ? browser : chrome;
+  // prefer `chrome` (callback-capable in both Chrome and Firefox)
+  const ext = (typeof chrome !== "undefined" && chrome.runtime) ? chrome : browser;
 
   function send(msg) {
     return new Promise((resolve, reject) => {

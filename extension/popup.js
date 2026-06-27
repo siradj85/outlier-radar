@@ -1,6 +1,7 @@
 /* TubeRanke popup - login + niche search + discoveries (feature C).
    Talks to background.js via runtime messaging. */
-const ext = typeof browser !== "undefined" ? browser : chrome;
+// prefer `chrome` (callback-capable in both Chrome and Firefox)
+const ext = (typeof chrome !== "undefined" && chrome.runtime) ? chrome : browser;
 
 function send(msg) {
   return new Promise((resolve, reject) => {

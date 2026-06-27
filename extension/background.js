@@ -2,7 +2,10 @@
    Owns all network + token storage. Exempt from CORS for host_permissions. */
 
 const API_BASE = "https://niche-radar-api.onrender.com";
-const ext = typeof browser !== "undefined" ? browser : chrome;
+// Prefer the `chrome` namespace: it exists in BOTH Chrome and Firefox and
+// supports callback-style APIs. Firefox's `browser` is promise-only, which
+// would break our callback usage below.
+const ext = (typeof chrome !== "undefined" && chrome.runtime) ? chrome : browser;
 
 /* ---- storage helpers ---- */
 function get(keys) {
