@@ -92,6 +92,9 @@ const handlers = {
   async saveReport({ title, data }) {
     return request("POST", "/api/reports", { title, data });
   },
+  async getUsage() {
+    return request("GET", "/api/me/usage");
+  },
 };
 
 ext.runtime.onMessage.addListener((msg, sender, sendResponse) => {

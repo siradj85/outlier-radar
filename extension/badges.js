@@ -1,12 +1,36 @@
 /* TubeRanke outlier badges - injects an outlier/VPH badge on every YouTube
    thumbnail. Pure client-side math (no API quota). On single-channel pages it
    shows a true outlier multiplier vs the channel's median; elsewhere it shows
-   views-per-hour momentum. Clicking a badge saves the idea to TubeRanke. */
+   views-per-hour momentum. Clicking a badge saves the idea to TubeRanke.
+
+   Plan-based gating:
+   - logged-out: max 3 badges per page, gray, no save
+   - free: all badges, muted colors, no save
+   - pro/trial: full color + save */
 (function () {
   const P = window.TubeRankeParse;
   const API = window.TubeRankeAPI;
   const BADGE = "tr-badge";
   const DONE = "data-tr-done";
+  const PLAN_KEY = "tuberanke-plan";
+
+  /* ---- plan state ---- */
+  let currentPlan = 'logged-out'; // 'logged-out' | 'free' | 'trial' | 'pro'
+
+  async function fetchPlan() {
+    try {
+      const token = await API.getToken();
+      if (!token) { currentPlan = 'logged-out'; return; }
+      const user = await API.me();
+      const p = user.plan || 'free';
+      if (p === 'pro') { currentPlan = 'pro'; return; }
+      if (user.trial_ends_at && new Date(user.trial_ends_at) > new Date()) { currentPlan = 'trial'; return; }
+      currentPlan = 'free';
+    } catch { currentPlan = 'logged-out'; }
+  }
+
+  const isPro = () => currentPlan === 'pro' || currentPlan === 'trial';
+  const isLoggedOut = () => currentPlan === 'logged-out';
 
   const fmt = (n) => {
     n = Number(n) || 0;
@@ -15,7 +39,6 @@
     return String(Math.round(n));
   };
 
-  // selectors for the various thumbnail containers YouTube uses
   const ITEM_SELECTORS = [
     "ytd-rich-item-renderer",
     "ytd-video-renderer",
@@ -29,10 +52,8 @@
     return /^\/@[^/]+/.test(p) || /^\/channel\//.test(p) || /^\/c\//.test(p) || /^\/user\//.test(p);
   }
 
-  // pull views + age + title + url from one item element
   function readItem(el) {
     const out = {};
-    // metadata spans hold "views" and "age" (new view-model layout + legacy)
     const spans = el.querySelectorAll(
       ".ytContentMetadataViewModelMetadataText, #metadata-line span, .inline-metadata-item"
     );
@@ -43,7 +64,6 @@
       if (out.views == null && /(view|مشاهد|vue|visualizac)/i.test(t)) out.views = P.parseCount(t);
       if (out.ageH == null && /(ago|قبل|hace|il y a|前)/i.test(t)) out.ageH = P.parseAgeHours(t);
     }
-    // fallback: first numeric span = views
     if (out.views == null && texts.length) out.views = P.parseCount(texts[0]);
     if (out.ageH == null && texts.length > 1) out.ageH = P.parseAgeHours(texts[1]);
 
@@ -73,11 +93,15 @@
     const b = document.createElement("div");
     b.className = BADGE + " " + cls;
     b.innerHTML = `<span class="tr-b-main">${label}</span>` + (sub ? `<span class="tr-b-sub">${sub}</span>` : "");
-    b.title = "Click to save this idea to TubeRanke";
-    b.addEventListener("click", (e) => {
-      e.preventDefault(); e.stopPropagation();
-      saveIdea(b, data);
-    });
+
+    if (isPro()) {
+      b.title = "Click to save this idea to TubeRanke";
+      b.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        saveIdea(b, data);
+      });
+    }
+
     return b;
   }
 
@@ -131,6 +155,8 @@
     const channelMode = isChannelPage();
     if (channelMode) recomputeChannelMedian(items);
 
+    let loggedOutCount = 0;
+
     items.forEach((el) => {
       if (el.getAttribute(DONE) === (channelMode ? "ch" : "vph")) return;
       const d = readItem(el);
@@ -147,7 +173,6 @@
       } else {
         if (!d.ageH || d.ageH <= 0) return;
         const vph = d.views / d.ageH;
-        // momentum color: scale by absolute VPH
         let mcls = "tr-b-mid";
         if (vph >= 5000) mcls = "tr-b-viral";
         else if (vph >= 1000) mcls = "tr-b-hot";
@@ -158,10 +183,19 @@
         data = { ...d, metricLabel: "vph", metricValue: vph };
       }
 
-      // store the metric so we can sort the grid by it
-      el.setAttribute("data-tr-metric", String(data.metricValue));
+      // ---- plan-based gating ----
+      if (isLoggedOut()) {
+        loggedOutCount++;
+        if (loggedOutCount > 3) {
+          el.setAttribute(DONE, channelMode ? "ch" : "vph");
+          return;
+        }
+        cls = "tr-b-mid";
+      } else if (currentPlan === 'free') {
+        cls = cls === "tr-b-viral" ? "tr-b-hot" : cls === "tr-b-good" ? "tr-b-mid" : cls;
+      }
 
-      // remove any previous badge (mode switched)
+      el.setAttribute("data-tr-metric", String(data.metricValue));
       el.querySelectorAll("." + BADGE).forEach((x) => x.remove());
       const host = thumbHost(el);
       if (getComputedStyle(host).position === "static") host.style.position = "relative";
@@ -171,14 +205,11 @@
 
     if (channelMode) {
       ensureSortButton();
-      if (sorted) applySortOrder(); // keep newly-loaded items in sorted position
+      if (sorted) applySortOrder();
     }
   }
 
-  /* ---- sort the channel grid by our outlier metric ----
-     Uses CSS `order` on the flex #contents grid instead of moving nodes:
-     YouTube's framework reverts DOM reordering, but it leaves CSS order
-     alone, and not moving nodes means our badges are never wiped. */
+  /* ---- sort the channel grid by our outlier metric ---- */
   const ALL_ITEMS = "ytd-rich-item-renderer, ytd-grid-video-renderer";
   let sortBtn, sorted = false;
 
@@ -218,7 +249,6 @@
     }
   }
 
-  // throttled observer
   let pending = false;
   function schedule() {
     if (pending) return;
@@ -232,8 +262,8 @@
     document.querySelectorAll("[" + DONE + "]").forEach((el) => el.removeAttribute(DONE));
     sorted = false;
     if (sortBtn) { sortBtn.remove(); sortBtn = null; }
-    setTimeout(scan, 600);
+    fetchPlan().then(() => setTimeout(scan, 600));
   });
   window.addEventListener("scroll", schedule, { passive: true });
-  setTimeout(scan, 1000);
+  setTimeout(async () => { await fetchPlan(); scan(); }, 1000);
 })();

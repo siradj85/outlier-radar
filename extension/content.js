@@ -6,7 +6,6 @@
   const PANEL_ID = "tuberanke-panel";
   let lastKey = null;
 
-  /* ---------- utilities ---------- */
   const fmt = (n) => {
     n = Number(n) || 0;
     if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
@@ -25,7 +24,6 @@
     return { kind: "other" };
   }
 
-  // On a video page, read the channel handle/link and the video's view count from the DOM
   function readVideoContext() {
     const ctx = {};
     const link =
@@ -39,7 +37,6 @@
         else ctx.channelId = m[1];
       }
     }
-    // video view count (locale-aware: English + Arabic)
     const nodes = document.querySelectorAll(
       "ytd-watch-metadata #info-container span, ytd-watch-metadata #info span, #info-container yt-formatted-string, #info span"
     );
@@ -53,7 +50,6 @@
     return ctx;
   }
 
-  /* ---------- outlier scoring ---------- */
   function channelMetrics(ch) {
     const s = ch.statistics || {};
     const subs = Number(s.subscriberCount) || 0;
@@ -77,7 +73,6 @@
     return { txt: x.toFixed(2) + "x below avg", cls: "tr-mid" };
   }
 
-  /* ---------- panel rendering ---------- */
   function ensurePanel() {
     let el = document.getElementById(PANEL_ID);
     if (el) return el;
@@ -110,13 +105,18 @@
     el.querySelector(".tr-body").innerHTML = '<div class="tr-err">' + msg + "</div>";
   }
 
-  function renderChannel(ch, videoViews) {
+  function renderChannel(ch, videoViews, usage) {
     const el = ensurePanel();
     const m = channelMetrics(ch);
     const snip = ch.snippet || {};
     const title = snip.title || "Channel";
     const score = videoViews != null ? outlierScore(videoViews, m.avgViews) : null;
     const lbl = scoreLabel(score);
+
+    const isFree = usage && usage.plan === 'free';
+    const usageLine = isFree
+      ? '<div class="tr-usage">' + usage.remaining + '/' + usage.limit + ' analyses left today</div>'
+      : '';
 
     const outlierBlock = videoViews != null
       ? '<div class="tr-outlier ' + lbl.cls + '">' +
@@ -126,6 +126,7 @@
       : "";
 
     el.querySelector(".tr-body").innerHTML =
+      usageLine +
       '<div class="tr-title">' + title + "</div>" +
       outlierBlock +
       '<div class="tr-grid">' +
@@ -163,7 +164,6 @@
     });
   }
 
-  /* ---------- main flow ---------- */
   async function run() {
     const loc = parseLocation();
     if (loc.kind === "other") {
@@ -199,13 +199,16 @@
       if (!channelId) { renderError("Could not detect the channel on this page."); return; }
       const ch = await API.channelById(channelId);
       if (!ch) { renderError("Channel not found."); return; }
-      renderChannel(ch, videoViews);
+
+      let usage = null;
+      try { usage = await API.getUsage(); } catch {}
+
+      renderChannel(ch, videoViews, usage);
     } catch (e) {
       renderError(e.message);
     }
   }
 
-  /* ---------- SPA navigation hooks ---------- */
   window.addEventListener("yt-navigate-finish", () => { lastKey = null; setTimeout(run, 400); });
   document.addEventListener("yt-page-data-updated", () => setTimeout(run, 400));
   setTimeout(run, 900);

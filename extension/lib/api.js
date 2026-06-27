@@ -34,6 +34,8 @@
     discoveries: () => send({ type: "discoveries" }),
     discover: (q) => send({ type: "discover", q }),
 
+    getUsage: () => send({ type: "getUsage" }),
+
     // feature B
     saveReport: (title, data) => send({ type: "saveReport", title, data }),
   };

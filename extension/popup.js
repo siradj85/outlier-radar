@@ -1,6 +1,5 @@
-/* TubeRanke popup - login + niche search + discoveries (feature C).
+/* TubeRanke popup - login + niche search + discoveries + usage display.
    Talks to background.js via runtime messaging. */
-// prefer `chrome` (callback-capable in both Chrome and Firefox)
 const ext = (typeof chrome !== "undefined" && chrome.runtime) ? chrome : browser;
 
 function send(msg) {
@@ -25,11 +24,34 @@ function showLogin() {
   $("view-main").hidden = true;
   $("plan").textContent = "";
 }
-function showMain(user) {
+async function showMain(user) {
   $("view-login").hidden = true;
   $("view-main").hidden = false;
   $("userEmail").textContent = user.email;
-  $("plan").textContent = (user.plan || "free").toUpperCase();
+  const plan = user.plan || "free";
+  $("plan").textContent = plan.toUpperCase();
+  $("plan").className = "plan plan-" + plan;
+
+  const planLabel = $("plan-label");
+  const usageEl = $("usage-info");
+  const upgradeBtn = $("upgradeBtn");
+
+  try {
+    const usage = await send({ type: "getUsage" });
+    if (usage) {
+      if (usage.plan === 'free') {
+        planLabel.textContent = usage.remaining + "/" + usage.limit + " analyses left today";
+        usageEl.hidden = false;
+        upgradeBtn.hidden = false;
+      } else {
+        planLabel.textContent = "Unlimited";
+        usageEl.hidden = false;
+        upgradeBtn.hidden = true;
+      }
+    }
+  } catch {
+    usageEl.hidden = true;
+  }
 }
 
 /* ---------- init ---------- */

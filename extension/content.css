@@ -55,6 +55,7 @@
 #tuberanke-panel .tr-primary:hover { background: #c4302b; }
 #tuberanke-panel .tr-primary:disabled { opacity: .6; cursor: default; }
 #tuberanke-panel .tr-savemsg { font-size: 11px; color: #9aa0a6; margin-top: 8px; min-height: 14px; }
+#tuberanke-panel .tr-usage { font-size: 11px; color: #ff9a95; margin-bottom: 8px; text-align: center; }
 
 /* ---- outlier badges on thumbnails ---- */
 .tr-badge {
