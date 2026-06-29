@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TubeRanke - YouTube Niche & Outlier Finder",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "description": "Analyze any YouTube channel, spot outlier videos, and discover profitable niches - powered by TubeRanke.",
   "icons": {
     "16": "icons/icon16.png",
