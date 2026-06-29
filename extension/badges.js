@@ -46,6 +46,9 @@
   const isPro = () => currentPlan === 'pro' || currentPlan === 'trial';
   const isLoggedOut = () => currentPlan === 'logged-out';
 
+  const UPGRADE_URL = "https://tuberanke.com/app/upgrade";
+  function openUpgrade() { window.open(UPGRADE_URL, "_blank"); }
+
   const fmt = (n) => {
     n = Number(n) || 0;
     if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M";
@@ -169,6 +172,12 @@
     const items = Array.from(document.querySelectorAll(ITEM_SELECTORS));
     if (!items.length) return;
     const channelMode = isChannelPage();
+
+    // Home/search/watch (views-per-hour) badges are a PRO feature.
+    // Channel-page badges stay free (the teaser funnel).
+    if (!channelMode && !isPro()) { ensureUpgradeFab(); return; }
+    updateUpgradeFab();
+
     if (channelMode) recomputeChannelMedian(items);
 
     let loggedOutCount = 0;
@@ -233,10 +242,27 @@
     if (sortBtn && document.body.contains(sortBtn)) return;
     sortBtn = document.createElement("button");
     sortBtn.id = "tr-sort-btn";
-    sortBtn.textContent = sorted ? "Original order" : "Sort by Outlier";
+    sortBtn.textContent = isPro() ? (sorted ? "Original order" : "Sort by Outlier") : "Sort by Outlier 🔒";
     if (sorted) sortBtn.classList.add("tr-active");
     sortBtn.addEventListener("click", toggleSort);
     document.body.appendChild(sortBtn);
+  }
+
+  /* ---- upgrade nudge (shown to non-Pro users) ---- */
+  let upFab;
+  function ensureUpgradeFab() {
+    if (isPro()) { if (upFab) { upFab.remove(); upFab = null; } return; }
+    if (upFab && document.body.contains(upFab)) return;
+    upFab = document.createElement("button");
+    upFab.id = "tr-upgrade-fab";
+    upFab.textContent = "🔒 Unlock Pro";
+    upFab.title = "Unlock outlier badges everywhere, sorting & saving";
+    upFab.addEventListener("click", openUpgrade);
+    document.body.appendChild(upFab);
+  }
+  function updateUpgradeFab() {
+    if (isPro()) { if (upFab) { upFab.remove(); upFab = null; } }
+    else ensureUpgradeFab();
   }
 
   function applySortOrder() {
@@ -252,6 +278,7 @@
   }
 
   function toggleSort() {
+    if (!isPro()) { openUpgrade(); return; }
     if (!sorted) {
       sorted = true;
       applySortOrder();
@@ -279,6 +306,7 @@
     document.querySelectorAll("[" + DONE + "]").forEach((el) => el.removeAttribute(DONE));
     sorted = false; planLoaded = false;
     if (sortBtn) { sortBtn.remove(); sortBtn = null; }
+    if (upFab) { upFab.remove(); upFab = null; }
     fetchPlan().then(() => setTimeout(scan, 600));
   });
   window.addEventListener("scroll", schedule, { passive: true });

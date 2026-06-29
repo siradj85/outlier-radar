@@ -102,6 +102,27 @@
 #tr-sort-btn:hover { background: #c4302b; }
 #tr-sort-btn.tr-active { background: #1f9d55; box-shadow: 0 6px 20px rgba(31,157,85,.45); }
 
+#tr-upgrade-fab {
+  position: fixed;
+  bottom: 22px; right: 22px;
+  z-index: 2147483500;
+  background: linear-gradient(135deg, #f59e0b, #e23b35);
+  color: #fff; border: 0; border-radius: 24px;
+  padding: 11px 18px;
+  font-family: Roboto, "Segoe UI", Arial, sans-serif;
+  font-weight: 800; font-size: 14px;
+  cursor: pointer;
+  box-shadow: 0 6px 22px rgba(245,158,11,.5);
+  direction: ltr;
+}
+#tr-upgrade-fab:hover { filter: brightness(1.08); }
+
+#tuberanke-panel .tr-upgrade {
+  background: linear-gradient(135deg, #f59e0b, #e23b35);
+  color: #fff; font-weight: 700;
+}
+#tuberanke-panel .tr-upgrade:hover { filter: brightness(1.08); }
+
 #tr-toast {
   position: fixed;
   bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);

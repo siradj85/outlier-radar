@@ -113,9 +113,12 @@
     const score = videoViews != null ? outlierScore(videoViews, m.avgViews) : null;
     const lbl = scoreLabel(score);
 
-    const isFree = usage && usage.plan === 'free';
-    const usageLine = isFree
+    const isFree = !usage || usage.plan === 'free' || usage.plan === 'logged-out';
+    const usageLine = (usage && usage.plan === 'free' && usage.remaining != null)
       ? '<div class="tr-usage">' + usage.remaining + '/' + usage.limit + ' analyses left today</div>'
+      : '';
+    const upgradeLine = isFree
+      ? '<a class="tr-btn tr-upgrade" href="https://tuberanke.com/app/upgrade" target="_blank">Unlock Pro - badges everywhere, sort & save</a>'
       : '';
 
     const outlierBlock = videoViews != null
@@ -136,12 +139,14 @@
       '<div class="tr-cell"><div class="tr-k">' + fmt(m.avgViews) + '</div><div class="tr-l">Avg / video</div></div>' +
       "</div>" +
       '<div class="tr-ratio">Views per subscriber: <b>' + m.viewsPerSub.toFixed(1) + "x</b></div>" +
-      '<button class="tr-btn tr-primary tr-save">Save to TubeRanke</button>' +
-      '<div class="tr-savemsg"></div>';
+      (isFree
+        ? upgradeLine
+        : '<button class="tr-btn tr-primary tr-save">Save to TubeRanke</button>' +
+          '<div class="tr-savemsg"></div>');
 
     const saveBtn = el.querySelector(".tr-save");
     const saveMsg = el.querySelector(".tr-savemsg");
-    saveBtn.addEventListener("click", async () => {
+    if (saveBtn) saveBtn.addEventListener("click", async () => {
       saveBtn.disabled = true;
       saveBtn.textContent = "Saving...";
       try {
