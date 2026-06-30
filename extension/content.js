@@ -102,6 +102,13 @@
 
   function renderError(msg) {
     const el = ensurePanel();
+    // turn the daily-limit moment into an upgrade prompt, not a scary error
+    if (/daily_limit_reached|429/i.test(msg)) {
+      el.querySelector(".tr-body").innerHTML =
+        '<div class="tr-msg">You\'ve used today\'s free analyses.</div>' +
+        '<a class="tr-btn tr-upgrade" href="https://tuberanke.com/app/upgrade" target="_blank">Go Pro for unlimited analyses</a>';
+      return;
+    }
     el.querySelector(".tr-body").innerHTML = '<div class="tr-err">' + msg + "</div>";
   }
 

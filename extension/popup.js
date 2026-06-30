@@ -18,9 +18,14 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-function lockedBanner(n, what) {
+function lockedBanner(total, what) {
   return `<a class="locked-banner" href="https://tuberanke.com/app/upgrade" target="_blank">
-    🔒 ${n} more ${what} hidden — <b>Upgrade to Pro</b> to see them all</a>`;
+    🔓 See all <b>${total} ${what}</b> &nbsp;→&nbsp; Upgrade to Pro</a>`;
+}
+
+function limitBanner() {
+  return `<a class="locked-banner" href="https://tuberanke.com/app/upgrade" target="_blank">
+    🚀 You've used today's free analyses — <b>Go Pro for unlimited</b> →</a>`;
 }
 
 /* ---------- view switching ---------- */
@@ -149,16 +154,13 @@ async function doSearch() {
     if (!items.length) { box.innerHTML = `<div class="muted">No channels found.</div>`; return; }
     let html = items.map(channelCard).join("");
     if (res.locked && res.total > items.length) {
-      html += lockedBanner(res.total - items.length, "channels");
+      html += lockedBanner(res.total, "channels");
     }
     box.innerHTML = html;
   } catch (e) {
-    if (/pro_feature|Pro users/i.test(e.message)) {
-      box.innerHTML = `<div class="upsell">Niche search is a Pro feature.
-        <a href="https://tuberanke.com" target="_blank">Upgrade on tuberanke.com</a></div>`;
-    } else {
-      box.innerHTML = `<div class="muted">${esc(e.message)}</div>`;
-    }
+    if (/daily_limit_reached|429/i.test(e.message)) box.innerHTML = limitBanner();
+    else if (/pro_feature|Pro users/i.test(e.message)) box.innerHTML = limitBanner();
+    else box.innerHTML = `<div class="muted">${esc(e.message)}</div>`;
   }
 }
 $("searchBtn").addEventListener("click", doSearch);
@@ -202,16 +204,12 @@ async function doDiscover() {
     if (!list.length) { box.innerHTML = `<div class="muted">No rising outliers found for this niche.</div>`; return; }
     let html = list.map(outlierCard).join("");
     if (res.locked && res.total > list.length) {
-      html += lockedBanner(res.total - list.length, "outliers");
+      html += lockedBanner(res.total, "outliers");
     }
     box.innerHTML = html;
   } catch (e) {
-    if (/pro_feature|Pro users/i.test(e.message)) {
-      box.innerHTML = `<div class="upsell">Discoveries are a Pro feature.
-        <a href="https://tuberanke.com" target="_blank">Upgrade on tuberanke.com</a></div>`;
-    } else {
-      box.innerHTML = `<div class="muted">${esc(e.message)}</div>`;
-    }
+    if (/daily_limit_reached|429|pro_feature|Pro users/i.test(e.message)) box.innerHTML = limitBanner();
+    else box.innerHTML = `<div class="muted">${esc(e.message)}</div>`;
   }
 }
 $("discoverBtn").addEventListener("click", doDiscover);
