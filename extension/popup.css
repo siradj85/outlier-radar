@@ -72,3 +72,11 @@ input:focus { outline: none; border-color: #e23b35; }
 .pill.b-good { background: #1f9d55; }
 .pill.b-mid { background: #41454d; }
 .views { font-size: 11px; color: #9aa0a6; }
+.locked-banner {
+  display: block; text-align: center; text-decoration: none;
+  margin-top: 8px; padding: 12px;
+  border-radius: 10px; font-size: 12px; color: #fff;
+  background: linear-gradient(135deg, #f59e0b, #e23b35);
+}
+.locked-banner b { text-decoration: underline; }
+.locked-banner:hover { filter: brightness(1.08); }

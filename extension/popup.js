@@ -18,6 +18,11 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+function lockedBanner(n, what) {
+  return `<a class="locked-banner" href="https://tuberanke.com/app/upgrade" target="_blank">
+    🔒 ${n} more ${what} hidden — <b>Upgrade to Pro</b> to see them all</a>`;
+}
+
 /* ---------- view switching ---------- */
 function showLogin() {
   $("view-login").hidden = false;
@@ -139,10 +144,14 @@ async function doSearch() {
   const box = $("searchResults");
   box.innerHTML = `<div class="muted">Searching...</div>`;
   try {
-    const items = await send({ type: "search", q });
-    box.innerHTML = items.length
-      ? items.map(channelCard).join("")
-      : `<div class="muted">No channels found.</div>`;
+    const res = await send({ type: "search", q });
+    const items = res.items || [];
+    if (!items.length) { box.innerHTML = `<div class="muted">No channels found.</div>`; return; }
+    let html = items.map(channelCard).join("");
+    if (res.locked && res.total > items.length) {
+      html += lockedBanner(res.total - items.length, "channels");
+    }
+    box.innerHTML = html;
   } catch (e) {
     if (/pro_feature|Pro users/i.test(e.message)) {
       box.innerHTML = `<div class="upsell">Niche search is a Pro feature.
@@ -188,10 +197,14 @@ async function doDiscover() {
   const box = $("discoverResults");
   box.innerHTML = `<div class="muted">Scanning the niche for rising outliers...</div>`;
   try {
-    const list = await send({ type: "discover", q });
-    box.innerHTML = list.length
-      ? list.map(outlierCard).join("")
-      : `<div class="muted">No rising outliers found for this niche.</div>`;
+    const res = await send({ type: "discover", q });
+    const list = res.discoveries || [];
+    if (!list.length) { box.innerHTML = `<div class="muted">No rising outliers found for this niche.</div>`; return; }
+    let html = list.map(outlierCard).join("");
+    if (res.locked && res.total > list.length) {
+      html += lockedBanner(res.total - list.length, "outliers");
+    }
+    box.innerHTML = html;
   } catch (e) {
     if (/pro_feature|Pro users/i.test(e.message)) {
       box.innerHTML = `<div class="upsell">Discoveries are a Pro feature.

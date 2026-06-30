@@ -177,6 +177,33 @@ async function enforceLimit(req, res, next) {
   }
 }
 
+// CHECK the daily limit WITHOUT consuming a unit (gate only).
+async function checkLimit(req, res, next) {
+  try {
+    const plan = await getEffectivePlan(req.user.userId);
+    if (plan !== "free") return next();
+    const limit = parseInt(await getSetting("free_daily_limit", 10), 10);
+    const { rows } = await pool.query(
+      "SELECT count FROM usage_daily WHERE user_id = $1 AND usage_date = CURRENT_DATE",
+      [req.user.userId]
+    );
+    const used = rows.length ? rows[0].count : 0;
+    if (used >= limit) return res.status(429).json({ error: "daily_limit_reached", limit });
+    next();
+  } catch (e) { res.status(500).json({ error: e.message }); }
+}
+
+// CONSUME one unit (free users only). Call only on a real analysis (cache miss).
+async function meterUsage(userId) {
+  const plan = await getEffectivePlan(userId);
+  if (plan !== "free") return;
+  await pool.query(
+    `INSERT INTO usage_daily (user_id, usage_date, count) VALUES ($1, CURRENT_DATE, 1)
+     ON CONFLICT (user_id, usage_date) DO UPDATE SET count = usage_daily.count + 1`,
+    [userId]
+  );
+}
+
 async function requirePro(req, res, next) {
   try {
     const plan = await getEffectivePlan(req.user.userId);
@@ -189,14 +216,14 @@ async function requirePro(req, res, next) {
   }
 }
 
-async function proxyToYouTube(req, res, urlBuilder, cacheKey, cacheTable) {
+async function proxyToYouTube(req, res, urlBuilder, cacheKey, cacheTable, meter) {
   try {
     if (cacheTable && cacheKey) {
       const { rows } = await pool.query(
         `SELECT data, cached_at FROM ${cacheTable} WHERE id = $1 AND cached_at > NOW() - INTERVAL '24 hours'`,
         [cacheKey]
       );
-      if (rows.length > 0) return res.json(rows[0].data);
+      if (rows.length > 0) return res.json(rows[0].data); // cache hit: no quota consumed
     }
 
     const apiKey = await resolveKey(req);
@@ -204,6 +231,7 @@ async function proxyToYouTube(req, res, urlBuilder, cacheKey, cacheTable) {
 
     const url = urlBuilder(apiKey);
     const data = await fetchJson(url);
+    if (meter) await meterUsage(req.user.userId); // count only a real (cache-miss) analysis
 
     if (cacheTable && cacheKey) {
       await pool.query(
@@ -218,7 +246,7 @@ async function proxyToYouTube(req, res, urlBuilder, cacheKey, cacheTable) {
 }
 
 /* GET /api/handle/:handle */
-app.get("/api/handle/:handle", requireAuth, enforceLimit, async (req, res) => {
+app.get("/api/handle/:handle", requireAuth, checkLimit, async (req, res) => {
   try {
     const h = req.params.handle;
     const { rows } = await pool.query(
@@ -242,32 +270,56 @@ app.get("/api/handle/:handle", requireAuth, enforceLimit, async (req, res) => {
 });
 
 /* GET /api/channel/:id */
-app.get("/api/channel/:id", requireAuth, enforceLimit, (req, res) => {
+app.get("/api/channel/:id", requireAuth, checkLimit, (req, res) => {
   const id = req.params.id;
   proxyToYouTube(req, res,
     (key) => `${YT}/channels?part=snippet,statistics&id=${id}&key=${key}`,
-    id, "channel_cache"
+    id, "channel_cache", true /* meter a real analysis */
   );
 });
 
-/* GET /api/search?q=... */
-app.get("/api/search", requireAuth, enforceLimit, requirePro, (req, res) => {
-  const q = req.query.q;
-  if (!q) return res.status(400).json({ error: "Missing query" });
-  proxyToYouTube(req, res,
-    (key) => `${YT}/search?part=snippet&q=${encodeURIComponent(q)}&type=channel&maxResults=15&key=${key}`,
-    q, "search_cache"
-  );
+/* GET /api/search?q=... — free users get 1 teaser result; Pro sees all. */
+app.get("/api/search", requireAuth, checkLimit, async (req, res) => {
+  try {
+    const q = req.query.q;
+    if (!q) return res.status(400).json({ error: "Missing query" });
+    const plan = await getEffectivePlan(req.user.userId);
+
+    let data;
+    const cached = await pool.query(
+      "SELECT data FROM search_cache WHERE id = $1 AND cached_at > NOW() - INTERVAL '24 hours'", [q]
+    );
+    if (cached.rows.length) {
+      data = cached.rows[0].data;
+    } else {
+      const apiKey = await resolveKey(req);
+      if (!apiKey) return res.status(400).json({ error: "No API key available. Set your key first." });
+      data = await fetchJson(`${YT}/search?part=snippet&q=${encodeURIComponent(q)}&type=channel&maxResults=15&key=${apiKey}`);
+      await pool.query(
+        `INSERT INTO search_cache (id, data) VALUES ($1, $2::jsonb)
+         ON CONFLICT (id) DO UPDATE SET data = $2::jsonb, cached_at = NOW()`,
+        [q, JSON.stringify(data)]
+      );
+      if (plan === "free") await meterUsage(req.user.userId);
+    }
+
+    const items = (data && data.items) || [];
+    if (plan === "free") {
+      return res.json({ items: items.slice(0, 1), locked: true, total: items.length });
+    }
+    res.json({ items, locked: false, total: items.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 /* GET /api/discover?q=niche - auto-discover rising outlier videos in a niche.
    Finds recent most-viewed videos for the niche, then scores each by
    views / channel-subscribers (a small channel with big views = a rising
    outlier worth copying). Sorted by that ratio. */
-app.get("/api/discover", requireAuth, enforceLimit, requirePro, async (req, res) => {
+app.get("/api/discover", requireAuth, checkLimit, async (req, res) => {
   try {
     const q = req.query.q;
     if (!q) return res.status(400).json({ error: "Missing query" });
+    const plan = await getEffectivePlan(req.user.userId);
     const apiKey = await resolveKey(req);
     if (!apiKey) return res.status(400).json({ error: "No API key available. Set your key first." });
 
@@ -311,7 +363,13 @@ app.get("/api/discover", requireAuth, enforceLimit, requirePro, async (req, res)
       });
     }
     out.sort((a, b) => b.outlier - a.outlier);
-    res.json({ discoveries: out.slice(0, 15) });
+    if (plan === "free") await meterUsage(req.user.userId);
+
+    const full = out.slice(0, 15);
+    if (plan === "free") {
+      return res.json({ discoveries: full.slice(0, 1), locked: true, total: full.length });
+    }
+    res.json({ discoveries: full, locked: false, total: full.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

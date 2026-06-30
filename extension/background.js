@@ -79,7 +79,7 @@ const handlers = {
   },
   async search({ q }) {
     const d = await request("GET", "/api/search?q=" + encodeURIComponent(q));
-    return d.items || [];
+    return { items: d.items || [], locked: !!d.locked, total: d.total || (d.items ? d.items.length : 0) };
   },
   async discoveries() {
     const d = await request("GET", "/api/discoveries");
@@ -87,7 +87,7 @@ const handlers = {
   },
   async discover({ q }) {
     const d = await request("GET", "/api/discover?q=" + encodeURIComponent(q));
-    return d.discoveries || [];
+    return { discoveries: d.discoveries || [], locked: !!d.locked, total: d.total || (d.discoveries ? d.discoveries.length : 0) };
   },
   async saveReport({ title, data }) {
     return request("POST", "/api/reports", { title, data });
