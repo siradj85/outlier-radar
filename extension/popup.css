@@ -16,6 +16,8 @@ body {
 .plan { font-size: 11px; color: #fff; background: rgba(255,255,255,.2); padding: 2px 8px; border-radius: 20px; }
 .view { padding: 14px; }
 .sub { color: #9aa0a6; margin-bottom: 10px; }
+.valueprop { color: #c8cdd4; font-size: 12.5px; line-height: 1.5; margin-bottom: 14px;
+  padding: 10px 12px; background: #11161f; border: 1px solid #2a2f3a; border-radius: 10px; }
 input {
   width: 100%; padding: 9px 11px; margin-bottom: 9px;
   background: #1a1d24; border: 1px solid #2a2f3a; border-radius: 9px;
