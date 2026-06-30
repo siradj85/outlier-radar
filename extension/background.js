@@ -18,6 +18,31 @@ function remove(keys) {
   return new Promise((resolve) => ext.storage.local.remove(keys, resolve));
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Fetch with a timeout + retries that survive Render's cold start (~5-10s).
+// Cold-start symptoms (502/503/504 or network/abort) are RETRIED, never treated
+// as a logout — only a real 401 means the token is invalid.
+async function robustFetch(url, opts, attempt = 0) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 25000);
+  try {
+    const r = await fetch(url, { ...opts, signal: ctrl.signal });
+    clearTimeout(timer);
+    if ((r.status === 502 || r.status === 503 || r.status === 504) && attempt < 2) {
+      await sleep(3000);
+      return robustFetch(url, opts, attempt + 1);
+    }
+    return r;
+  } catch (e) {
+    clearTimeout(timer);
+    if (attempt < 2) { await sleep(3000); return robustFetch(url, opts, attempt + 1); }
+    const err = new Error("Server is waking up — please try again in a moment.");
+    err.coldStart = true;
+    throw err;
+  }
+}
+
 /* ---- core request ---- */
 async function request(method, path, body) {
   const { tr_token } = await get(["tr_token"]);
@@ -25,12 +50,13 @@ async function request(method, path, body) {
   if (tr_token) headers["Authorization"] = "Bearer " + tr_token;
   if (body) headers["Content-Type"] = "application/json";
 
-  const r = await fetch(API_BASE + path, {
+  const r = await robustFetch(API_BASE + path, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
 
+  // Only a genuine 401 logs out. Cold-start / 5xx / network never do.
   if (r.status === 401) {
     await remove(["tr_token", "tr_user"]);
     throw new Error("Session expired. Please log in again.");

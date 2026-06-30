@@ -18,8 +18,10 @@
   let planLoaded = false;
 
   async function fetchPlan() {
+    let hadToken = false;
     try {
       const token = await API.getToken();
+      hadToken = !!token;
       if (!token) { currentPlan = 'logged-out'; planLoaded = true; return; }
       const cached = await API.getUser();
       if (cached && cached.plan) {
@@ -30,7 +32,9 @@
       const user = await API.me();
       currentPlan = resolvePlan(user);
     } catch {
-      if (!planLoaded) currentPlan = 'logged-out';
+      // If logged in but the plan fetch failed (e.g. server cold start),
+      // assume 'free' — never wrongly downgrade a logged-in user to logged-out.
+      currentPlan = hadToken ? 'free' : 'logged-out';
     } finally {
       planLoaded = true;
     }
