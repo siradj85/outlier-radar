@@ -14,6 +14,10 @@
     return String(Math.round(n));
   };
 
+  // escape any API/DOM-derived text before inserting into innerHTML (anti-XSS)
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
   function parseLocation() {
     const p = location.pathname;
     if (p.startsWith("/watch")) return { kind: "video" };
@@ -109,7 +113,7 @@
         '<a class="tr-btn tr-upgrade" href="https://tuberanke.com/app/upgrade" target="_blank">Go Pro for unlimited analyses</a>';
       return;
     }
-    el.querySelector(".tr-body").innerHTML = '<div class="tr-err">' + msg + "</div>";
+    el.querySelector(".tr-body").innerHTML = '<div class="tr-err">' + esc(msg) + "</div>";
   }
 
   function renderChannel(ch, videoViews, usage) {
@@ -137,7 +141,7 @@
 
     el.querySelector(".tr-body").innerHTML =
       usageLine +
-      '<div class="tr-title">' + title + "</div>" +
+      '<div class="tr-title">' + esc(title) + "</div>" +
       outlierBlock +
       '<div class="tr-grid">' +
       '<div class="tr-cell"><div class="tr-k">' + fmt(m.subs) + '</div><div class="tr-l">Subscribers</div></div>' +
